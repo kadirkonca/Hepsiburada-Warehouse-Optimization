@@ -52,16 +52,13 @@ st.sidebar.header("📂 Senaryo Arşivi")
 if scenarios:
     for name in list(scenarios.keys()):
         with st.sidebar.expander(f"📍 {name}"):
-            # İşlem Butonları
             col_a, col_b = st.columns(2)
             
-            # 1. YÜKLE (Tabloya bas)
             if col_a.button("📤 Yükle", key=f"load_{name}"):
                 pd.DataFrame(scenarios[name]).to_csv(DB_FILE, index=False)
                 st.session_state["table_version"] += 1
                 st.rerun()
             
-            # 2. İNDİR (Excel olarak al)
             excel_data = to_excel(pd.DataFrame(scenarios[name]))
             col_b.download_button(
                 label="📥 İndir",
@@ -71,7 +68,6 @@ if scenarios:
                 key=f"dl_{name}"
             )
             
-            # 3. YENİDEN ADLANDIR
             new_name = st.text_input("Yeni İsim:", value=name, key=f"rename_input_{name}")
             if st.button("✏️ Adı Güncelle", key=f"rename_btn_{name}"):
                 if new_name and new_name != name:
@@ -79,7 +75,6 @@ if scenarios:
                     save_scenarios(scenarios)
                     st.rerun()
             
-            # 4. SİL
             if st.button("🗑️ Bu Senaryoyu Sil", key=f"del_{name}", use_container_width=True):
                 del scenarios[name]
                 save_scenarios(scenarios)
@@ -105,12 +100,21 @@ if os.path.exists(DB_FILE):
 else:
     current_df = pd.DataFrame(initial_data)
 
-# --- TABLO ---
+# --- TABLO (GÖRSEL FORMATLAMA EKLENDİ) ---
 st.subheader("📊 Aktif Çalışma Tablosu")
+
+# Sütun bazlı formatlama ayarları
+column_config = {
+    "Kapasite (m3)": st.column_config.NumberColumn(format="%d"),
+    "Kira Maliyeti (₺)": st.column_config.NumberColumn(format="%d"),
+    "Fix Cost (m3 Başı)": st.column_config.NumberColumn(format="%.2f"),
+}
+
 edited_df = st.data_editor(
     current_df, 
     use_container_width=True, 
     num_rows="dynamic", 
+    column_config=column_config,
     key=f"editor_v{st.session_state['table_version']}"
 )
 
@@ -129,7 +133,6 @@ if col_s.button("💾 Arşive Kaydet", use_container_width=True):
     else:
         st.warning("İsim giriniz!")
 
-# Tablonun anlık halini Excel indir
 current_excel = to_excel(edited_df)
 col_d.download_button(
     label="🧪 Mevcut Tabloyu Excel İndir",
@@ -139,7 +142,6 @@ col_d.download_button(
     use_container_width=True
 )
 
-# Excel Yükleme Kaydı
 if uploaded_file:
     st.sidebar.warning("Yüklenen dosyayı kaydetmek için aşağıya isim yazıp Arşive Kaydet'e basın!")
     try:
@@ -159,7 +161,6 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
     depolar = edited_df["Depo Adı"].tolist()
     usage = pulp.LpVariable.dicts("m3_Usage", depolar, lowBound=0)
     
-    # Amaç ve Kısıtlar
     prob += pulp.lpSum([(usage[d] * edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0]) + edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0] for d in depolar])
     prob += pulp.lpSum([usage[d] for d in depolar]) == target_demand
     for d in depolar:
@@ -167,7 +168,9 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
     
     prob.solve(pulp.PULP_CBC_CMD(msg=0))
     if pulp.LpStatus[prob.status] == 'Optimal':
-        st.success(f"💰 Minimum Toplam Maliyet: {pulp.value(prob.objective):,.2f} ₺")
+        # Sonuç maliyeti de binlik ayraçlı gösterelim
+        total_cost_val = pulp.value(prob.objective)
+        st.success(f"💰 Minimum Toplam Maliyet: {total_cost_val:,.0f} ₺".replace(",", "."))
         res_df = pd.DataFrame([{"Depo": d, "Atanan (m3)": round(usage[d].varValue, 2)} for d in depolar])
         st.dataframe(res_df, use_container_width=True)
         st.bar_chart(res_df.set_index("Depo"))
