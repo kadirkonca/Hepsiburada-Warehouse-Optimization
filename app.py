@@ -47,6 +47,14 @@ def format_with_dots(val):
     except:
         return val
 
+# Geriye sayıya çevirme fonksiyonu (Hesaplama için)
+def unformat_dots(val):
+    if isinstance(val, str):
+        # Noktaları kaldırıp sayıya çeviriyoruz
+        clean_val = val.replace(".", "").replace(",", "")
+        return float(clean_val) if clean_val else 0.0
+    return val
+
 if "table_version" not in st.session_state: st.session_state["table_version"] = 0
 scenarios = load_scenarios()
 
@@ -80,25 +88,28 @@ else:
 
 st.subheader("📊 Aktif Çalışma Tablosu")
 
-# !!! ZORLA FORMATLAMA: TABLOYU GÖSTERİRKEN SAYILARI NOKTALI METNE ÇEVİRİYORUZ !!!
+# Gösterim için formatlıyoruz
 display_df = df.copy()
 display_df["Kapasite (m3)"] = display_df["Kapasite (m3)"].apply(format_with_dots)
 display_df["Kira Maliyeti (₺)"] = display_df["Kira Maliyeti (₺)"].apply(format_with_dots)
+
+# !!! HİZALAMA AYARLARI (ALIGNMENT) !!!
+column_config = {
+    "Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium", alignment="left"),
+    "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)", alignment="center"),
+    "Kira Maliyeti (₺)": st.column_config.TextColumn("Kira Maliyeti (₺)", alignment="center"),
+    "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f", alignment="center"),
+}
 
 edited_df_display = st.data_editor(
     display_df, 
     use_container_width=True, 
     num_rows="dynamic",
+    column_config=column_config,
     key=f"editor_v{st.session_state['table_version']}"
 )
 
-# Geriye sayıya çevirme fonksiyonu (Hesaplama için)
-def unformat_dots(val):
-    if isinstance(val, str):
-        return float(val.replace(".", "").replace(",", ""))
-    return val
-
-# Düzenlenen veriyi sayısal hale geri getiriyoruz (Kaydetme ve Optimizasyon için)
+# Düzenlenen veriyi sayısal hale geri getiriyoruz
 edited_df = edited_df_display.copy()
 edited_df["Kapasite (m3)"] = edited_df["Kapasite (m3)"].apply(unformat_dots)
 edited_df["Kira Maliyeti (₺)"] = edited_df["Kira Maliyeti (₺)"].apply(unformat_dots)
@@ -112,22 +123,27 @@ if col_s.button("💾 Arşive Kaydet"):
         edited_df.to_csv(DB_FILE, index=False)
         scenarios[sc_name_input] = edited_df.to_dict(orient="list")
         save_scenarios(scenarios)
-        st.success("Kaydedildi!")
+        st.success("Başarıyla Arşivlendi!")
         st.rerun()
 
 current_excel = to_excel(edited_df)
-col_d.download_button(label="🧪 Excel İndir", data=current_excel, file_name="export.xlsx")
+col_d.download_button(label="🧪 Excel İndir", data=current_excel, file_name="hepsiburada_plan.xlsx")
 
 # --- OPTİMİZASYON ---
 st.divider()
-target_demand = st.number_input("Hedef Talep (m3)", value=35000)
-if st.button("🚀 Optimizasyonu Çalıştır"):
+target_demand = st.number_input("Hedeflenen Toplam Sevkiyat Talebi (m3)", value=35000)
+if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
     try:
         prob = pulp.LpProblem("Warehouse_Minimization", pulp.LpMinimize)
         depolar = edited_df["Depo Adı"].tolist()
         usage = pulp.LpVariable.dicts("m3", depolar, lowBound=0)
         
-        prob += pulp.lpSum([(usage[d] * float(edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + float(edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in depolar])
+        prob += pulp.lpSum([
+            (usage[d] * float(edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + 
+            float(edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) 
+            for d in depolar
+        ])
+        
         prob += pulp.lpSum([usage[d] for d in depolar]) == target_demand
         for d in depolar:
             prob += usage[d] <= float(edited_df.loc[edited_df["Depo Adı"] == d, "Kapasite (m3)"].values[0])
@@ -139,10 +155,11 @@ if st.button("🚀 Optimizasyonu Çalıştır"):
             cost_formatted = "{:,.0f}".format(cost_val).replace(",", ".")
             st.markdown(f"### 💰 Minimum Toplam Maliyet: **{cost_formatted} ₺**")
             
-            res_df = pd.DataFrame([{"Depo": d, "Atanan": round(usage[d].varValue, 2)} for d in depolar])
-            st.dataframe(res_df.style.format({"Atanan": "{:,.2f}"}), use_container_width=True)
+            res_df = pd.DataFrame([{"Depo": d, "Atanan (m3)": round(usage[d].varValue, 2)} for d in depolar])
+            st.dataframe(res_df.style.format({"Atanan (m3)": "{:,.2f}"}), use_container_width=True)
+            st.bar_chart(res_df.set_index("Depo"))
     except Exception as e:
-        st.error(f"Hata: {e}")
+        st.error(f"Hesaplama Hatası: {e}")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Not: Veriler ortak sunucuda saklanır.")
+st.sidebar.caption("HB Depo Optimizasyon v2.1")
