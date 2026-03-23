@@ -28,9 +28,7 @@ def load_history():
         except: return []
     return []
 
-def save_to_history(new_entry):
-    history = load_history()
-    history.insert(0, new_entry) 
+def save_history_all(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=4)
 
@@ -57,30 +55,48 @@ full_history = load_history()
 
 # --- SOL PANEL (ARŞİV) ---
 st.sidebar.header("📜 Merkezi Senaryo Arşivi")
+
 if full_history:
+    # Silme işlemi için listenin kopyası üzerinden döneceğiz
+    new_history_list = full_history.copy()
     for idx, entry in enumerate(full_history):
-        # Başlıkta artık yükleyen kişi de görünüyor
         with st.sidebar.expander(f"📍 {entry['isim']} | 👤 {entry.get('yukleyen', 'Bilinmiyor')}"):
             st.caption(f"📅 {entry['tarih']} - {entry['tip']}")
-            if st.button("📤 Tabloya Yükle", key=f"h_load_{idx}"):
+            
+            col_load, col_dl, col_del = st.columns([1, 1, 1])
+            
+            if col_load.button("📤 Yükle", key=f"h_load_{idx}"):
                 pd.DataFrame(entry['veri']).to_csv(DB_FILE, index=False)
                 st.session_state["table_version"] += 1
                 st.rerun()
-            st.download_button("📥 Excel İndir", to_excel(pd.DataFrame(entry['veri'])), f"{entry['isim']}.xlsx", key=f"h_dl_{idx}")
+                
+            col_dl.download_button("📥 İndir", to_excel(pd.DataFrame(entry['veri'])), f"{entry['isim']}.xlsx", key=f"h_dl_{idx}")
+            
+            if col_del.button("🗑️ Sil", key=f"h_del_{idx}"):
+                # Arşivden ilgili kaydı çıkar
+                new_history_list.pop(idx)
+                save_history_all(new_history_list)
+                st.sidebar.success(f"'{entry['isim']}' arşivden silindi.")
+                st.rerun()
 else:
     st.sidebar.info("Arşiv henüz boş.")
 
 st.sidebar.markdown("---")
 
-# --- YENİ DOSYA YÜKLEME BÖLÜMÜ (İSİM ZORUNLULUĞU) ---
+# --- YENİ DOSYA YÜKLEME (İSİM KONTROLÜ) ---
 st.sidebar.header("📤 Dışarıdan Veri Yükle")
-up_user = st.sidebar.text_input("Adınız Soyadınız:", key="up_user_name", placeholder="Örn: Kadir Konca")
-up_file_custom_name = st.sidebar.text_input("Dosya Takma Adı:", key="up_file_name", placeholder="Örn: 2024 Mart Verileri")
+up_user = st.sidebar.text_input("Adınız Soyadınız:", key="up_user_name", placeholder="Kadir Konca")
+up_file_custom_name = st.sidebar.text_input("Dosya Takma Adı:", key="up_file_name", placeholder="2024 Mart")
 uploaded_file = st.sidebar.file_uploader("Excel veya CSV Seçin", type=["csv", "xlsx"])
 
 if uploaded_file:
+    # İsimlerin benzersiz olup olmadığını kontrol et
+    existing_names = [e['isim'] for e in full_history]
+    
     if not up_user or not up_file_custom_name:
-        st.sidebar.error("⚠️ Lütfen önce adınızı ve dosya adını girin!")
+        st.sidebar.error("⚠️ Adınızı ve dosya adını girin!")
+    elif up_file_custom_name in existing_names:
+        st.sidebar.error(f"⚠️ '{up_file_custom_name}' adında bir senaryo zaten var!")
     else:
         if st.sidebar.button("✅ Arşive ve Tabloya İşle"):
             try:
@@ -94,9 +110,9 @@ if uploaded_file:
                     "tip": "Dışarıdan Yükleme",
                     "veri": up_df.to_dict(orient="list")
                 }
-                save_to_history(new_upload)
+                full_history.insert(0, new_upload)
+                save_history_all(full_history)
                 st.session_state["table_version"] += 1
-                st.sidebar.success("Kayıt başarıyla oluşturuldu!")
                 st.rerun()
             except Exception as e: st.sidebar.error(f"Hata: {e}")
 
@@ -127,15 +143,19 @@ edited_df = edited_df_display.copy()
 edited_df["Kapasite (m3)"] = edited_df["Kapasite (m3)"].apply(unformat_dots)
 edited_df["Kira Maliyeti (₺)"] = edited_df["Kira Maliyeti (₺)"].apply(unformat_dots)
 
-# --- SENARYO KAYDETME (İSİM ZORUNLULUĞU) ---
+# --- SENARYO KAYDETME (İSİM KONTROLÜ) ---
 st.markdown("### 💾 Bu Çalışmayı Yeni Senaryo Olarak Arşivle")
 c1, c2, c3 = st.columns([1, 1, 1])
 save_user = c1.text_input("Yükleyen Kişi:", placeholder="Adınız Soyadınız")
-save_name = c2.text_input("Senaryo Dosya Adı:", placeholder="Örn: Bayram_Planı_v1")
+save_name = c2.text_input("Senaryo Dosya Adı:", placeholder="Örn: Kampanya_v1")
+
+existing_names = [e['isim'] for e in full_history]
 
 if c3.button("💾 Arşive Kaydet", use_container_width=True):
     if not save_user or not save_name:
-        st.error("⚠️ Kaydetmek için hem isminizi hem de senaryo adını girmelisiniz!")
+        st.error("⚠️ İsim ve senaryo adı zorunludur!")
+    elif save_name in existing_names:
+        st.error(f"⚠️ '{save_name}' isimli bir senaryo zaten mevcut. Lütfen farklı bir isim seçin!")
     else:
         new_entry = {
             "tarih": datetime.now().strftime("%d.%m.%Y %H:%M"),
@@ -144,8 +164,9 @@ if c3.button("💾 Arşive Kaydet", use_container_width=True):
             "tip": "Manuel Kayıt",
             "veri": edited_df.to_dict(orient="list")
         }
-        save_to_history(new_entry)
-        st.success(f"Senaryo '{save_user}' tarafından başarıyla kaydedildi!")
+        full_history.insert(0, new_entry)
+        save_history_all(full_history)
+        st.success(f"Senaryo kaydedildi!")
         st.rerun()
 
 # --- OPTİMİZASYON ---
@@ -170,4 +191,4 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
     except Exception as e: st.error(f"Hata: {e}")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("v3.0 - Kimlikli Arşiv Sistemi")
+st.sidebar.caption("v3.1 - Gelişmiş Arşiv & Güvenlik")
