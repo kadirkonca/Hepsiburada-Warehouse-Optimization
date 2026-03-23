@@ -8,9 +8,10 @@ from io import BytesIO
 # 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
+# DOSYA YOLLARI (Sabit tutuyoruz ki silinmesin)
 DB_FILE = "shared_warehouse_data.csv"
 SCENARIO_FILE = "scenarios.json"
-UPLOAD_HISTORY_FILE = "upload_history.json" # Yüklenen dosyalar için ayrı arşiv
+UPLOAD_HISTORY_FILE = "upload_history.json"
 
 initial_data = {
     "Depo Adı": ["Gebze Depo", "İzmir Torbalı Depo", "İzmir Pancar Depo", "Düzce Depo", "Bilecik Depo", "Adana Depo", "İzmir Pınarbaşı Depo"],
@@ -28,7 +29,8 @@ def load_json(file_path):
     return {}
 
 def save_json(file_path, data):
-    with open(file_path, "w") as f: json.dump(data, f)
+    with open(file_path, "w") as f: 
+        json.dump(data, f)
 
 def to_excel(df):
     output = BytesIO()
@@ -38,6 +40,7 @@ def to_excel(df):
 
 def reset_system():
     if os.path.exists(DB_FILE): os.remove(DB_FILE)
+    # Senaryo dosyalarını SİLMİYORUZ, sadece aktif tabloyu sıfırlıyoruz
     st.cache_data.clear()
     st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1
     st.rerun()
@@ -93,22 +96,28 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.header("📤 Yeni Dosya Yükle")
-uploaded_file = st.sidebar.file_uploader("Excel veya CSV", type=["csv", "xlsx"])
+uploaded_file = st.sidebar.file_uploader("Excel veya CSV Seçin", type=["csv", "xlsx"])
 
 if uploaded_file:
     try:
         up_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
         up_df.columns = [c.strip() for c in up_df.columns]
-        # Yüklenen dosyayı anlık tabloya bas
         up_df.to_csv(DB_FILE, index=False)
-        # Geçmişe otomatik eklemek için isim alalım
         file_name = uploaded_file.name
         uploads[file_name] = up_df.to_dict(orient="list")
         save_json(UPLOAD_HISTORY_FILE, uploads)
         st.session_state["table_version"] += 1
-        st.sidebar.success(f"✅ {file_name} yüklendi ve geçmişe eklendi!")
+        st.sidebar.success(f"✅ {file_name} geçmişe eklendi!")
     except Exception as e:
         st.sidebar.error(f"Hata: {e}")
+
+# --- DRIVE TEST BİLGİSİ ---
+st.sidebar.markdown("---")
+if st.sidebar.button("☁️ Google Drive Bağlantısını Test Et"):
+    st.sidebar.info("Bağlantı protokolü hazırlanıyor... Şirket maili izinleri kontrol ediliyor.")
+    # Burada ileride gerçek Drive API çağrısını yapacağız. 
+    # Şimdilik sadece buton ve yapı hazır.
+    st.sidebar.warning("BT erişim izni bekleniyor.")
 
 # --- ANA EKRAN ---
 st.title("🚀 Hepsiburada Senaryo Merkezi")
@@ -182,4 +191,4 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
     except Exception as e: st.error(f"Hata: {e}")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("HB Depo Optimizasyon v2.5")
+st.sidebar.caption("HB Depo Optimizasyon v2.6")
