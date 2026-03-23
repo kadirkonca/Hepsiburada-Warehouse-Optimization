@@ -13,7 +13,7 @@ SCENARIO_FILE = "scenarios.json"
 
 initial_data = {
     "Depo Adı": ["Gebze Depo", "İzmir Torbalı Depo", "İzmir Pancar Depo", "Düzce Depo", "Bilecik Depo", "Adana Depo", "İzmir Pınarbaşı Depo"],
-    "Kapasite (m3)": [19.301, 13.824, 3.365, 15.343, 22.000, 2.133, 4.694],
+    "Kapasite (m3)": [19_301, 13_824, 3.365, 15.343, 22.000, 2.133, 4.694],
     "Kira Maliyeti (₺)": [10072.228, 3353.400, 2296.381, 2697.600, 3310.998, 0, 737.965],
     "Fix Cost (m3 Başı)": [185.19, 31.15, 277.30, 73.51, 55.12, 73.18, 48.03]
 }
