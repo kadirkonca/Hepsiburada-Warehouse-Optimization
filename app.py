@@ -16,7 +16,10 @@ initial_data = {
     "Fix Cost (m3 Başı)": [185.19, 31.15, 277.30, 73.51, 55.12, 73.18, 48.03]
 }
 
-# --- YARDIMCI FONKSİYONLAR ---
+# --- SIFIRLAMA VE VERİ YÖNETİMİ ---
+if "table_version" not in st.session_state:
+    st.session_state["table_version"] = 0
+
 def save_data(df):
     df.to_csv(DB_FILE, index=False)
 
@@ -25,18 +28,21 @@ def load_shared_data():
         return pd.read_csv(DB_FILE)
     return pd.DataFrame(initial_data)
 
-# --- SIFIRLAMA MANTIĞI (GELİŞTİRİLMİŞ) ---
 def reset_system():
     # 1. Ortak dosyayı sil
     if os.path.exists(DB_FILE):
         os.remove(DB_FILE)
     
-    # 2. Streamlit'in tüm geçici hafızasını (manuel değişiklikleri) temizle
-    for key in st.session_state.keys():
-        del st.session_state[key]
-    
+    # 2. Önbelleği temizle
     st.cache_data.clear()
-    st.success("Sistem ve tarayıcı hafızası tamamen sıfırlandı!")
+    
+    # 3. KRİTİK ADIM: Tablo sürümünü artır (Bu sayede tablo resetlenir)
+    st.session_state["table_version"] += 1
+    
+    # 4. Diğer state verilerini temizle
+    if 'results' in st.session_state:
+        del st.session_state['results']
+        
     st.rerun()
 
 # --- ARAYÜZ ---
@@ -44,8 +50,7 @@ st.title("🚀 Hepsiburada Ortak Depo Planlama")
 
 col_title, col_reset = st.columns([4, 1])
 with col_reset:
-    # Burada direkt fonksiyonu çağırıyoruz
-    if st.button("🚨 SİSTEMİ SIFIRLA"):
+    if st.button("🚨 SİSTEMİ SIFIRLA", use_container_width=True):
         reset_system()
 
 st.markdown("---")
@@ -59,9 +64,9 @@ if uploaded_file:
         new_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
         new_df.columns = [c.strip() for c in new_df.columns]
         save_data(new_df)
-        # Yükleme sonrası hafızayı temizle ki yeni veri görünsün
         st.cache_data.clear()
-        st.sidebar.success("✅ Yeni dosya kaydedildi!")
+        st.session_state["table_version"] += 1 # Yükleyince de tabloyu yenile
+        st.sidebar.success("✅ Dosya yüklendi!")
         st.rerun()
     except Exception as e:
         st.sidebar.error(f"Hata: {e}")
@@ -69,10 +74,15 @@ if uploaded_file:
 # Veriyi yükle
 df = load_shared_data()
 
-# --- TABLO (Key eklendi ki sıfırlanınca resetlensin) ---
+# --- TABLO ---
 st.subheader("📊 Güncel Ortak Veri Tablosu")
-# 'key' parametresi sayesinde reset_system içindeki 'del st.session_state' komutu burayı sıfırlar
-edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic", key="main_editor")
+# 'key' kısmına sürüm numarasını ekledik, her değişimde tablo sıfırdan çizilir
+edited_df = st.data_editor(
+    df, 
+    use_container_width=True, 
+    num_rows="dynamic", 
+    key=f"editor_v{st.session_state['table_version']}"
+)
 
 if st.button("💾 Tablodaki Değişiklikleri Herkese Kaydet"):
     save_data(edited_df)
@@ -83,6 +93,7 @@ st.divider()
 col_opt1, col_opt2 = st.columns([1, 2])
 
 with col_opt1:
+    st.subheader("🎯 Hesaplama")
     target_demand = st.number_input("Hedeflenen Toplam Sevkiyat Talebi (m3)", min_value=0, value=35000)
     if st.button("🚀 Hesapla", use_container_width=True):
         try:
