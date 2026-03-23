@@ -21,7 +21,9 @@ initial_data = {
 # --- FONKSİYONLAR ---
 def load_scenarios():
     if os.path.exists(SCENARIO_FILE):
-        with open(SCENARIO_FILE, "r") as f: return json.load(f)
+        try:
+            with open(SCENARIO_FILE, "r") as f: return json.load(f)
+        except: return {}
     return {}
 
 def save_scenarios(scs):
@@ -39,14 +41,11 @@ def reset_system():
     st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1
     st.rerun()
 
-# Rakamları hem noktalı yapan hem de boşlukla "ortalayan" fonksiyon
 def format_and_center(val):
     try:
         formatted = "{:,.0f}".format(float(val)).replace(",", ".")
-        # Başına ve sonuna boşluk ekleyerek ortada görünmesini sağlıyoruz
         return f"      {formatted}      "
-    except:
-        return val
+    except: return val
 
 def unformat_dots(val):
     if isinstance(val, str):
@@ -57,7 +56,7 @@ def unformat_dots(val):
 if "table_version" not in st.session_state: st.session_state["table_version"] = 0
 scenarios = load_scenarios()
 
-# --- SOL PANEL ---
+# --- SOL PANEL (SENARYO VE DOSYA YÜKLEME) ---
 st.sidebar.header("📂 Senaryo Arşivi")
 if scenarios:
     for name in list(scenarios.keys()):
@@ -75,6 +74,24 @@ if scenarios:
 else:
     st.sidebar.info("Kayıtlı senaryo yok.")
 
+st.sidebar.markdown("---")
+st.sidebar.header("📤 Dışarıdan Veri Yükle")
+uploaded_file = st.sidebar.file_uploader("Excel veya CSV Seçin", type=["csv", "xlsx"])
+
+if uploaded_file:
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            up_df = pd.read_csv(uploaded_file)
+        else:
+            up_df = pd.read_excel(uploaded_file)
+        # Sütun isimlerini temizle
+        up_df.columns = [c.strip() for c in up_df.columns]
+        up_df.to_csv(DB_FILE, index=False)
+        st.session_state["table_version"] += 1
+        st.sidebar.success("✅ Dosya başarıyla yüklendi! Aşağıdan isim verip kaydedebilirsiniz.")
+    except Exception as e:
+        st.sidebar.error(f"Hata: {e}")
+
 # --- ANA EKRAN ---
 st.title("🚀 Hepsiburada Senaryo Merkezi")
 if st.button("🚨 SİSTEMİ SIFIRLA"):
@@ -87,12 +104,10 @@ else:
 
 st.subheader("📊 Aktif Çalışma Tablosu")
 
-# Tabloyu görsel olarak hazırlıyoruz
 display_df = df.copy()
 display_df["Kapasite (m3)"] = display_df["Kapasite (m3)"].apply(format_and_center)
 display_df["Kira Maliyeti (₺)"] = display_df["Kira Maliyeti (₺)"].apply(format_and_center)
 
-# HATA VEREN alignment="center" PARAMETRESİNİ TAMAMEN SİLDİK
 column_config = {
     "Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium"),
     "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)"),
@@ -108,7 +123,7 @@ edited_df_display = st.data_editor(
     key=f"editor_v{st.session_state['table_version']}"
 )
 
-# Arka planda sayısal işlem için temizliyoruz
+# Arka plan işlemleri için temizle
 edited_df = edited_df_display.copy()
 edited_df["Kapasite (m3)"] = edited_df["Kapasite (m3)"].apply(unformat_dots)
 edited_df["Kira Maliyeti (₺)"] = edited_df["Kira Maliyeti (₺)"].apply(unformat_dots)
@@ -116,17 +131,17 @@ edited_df["Kira Maliyeti (₺)"] = edited_df["Kira Maliyeti (₺)"].apply(unform
 # --- KAYDETME ---
 st.markdown("### 💾 Senaryoyu Kaydet")
 col_n, col_s, col_d = st.columns([2, 1, 1])
-sc_name_input = col_n.text_input("Senaryo Adı:", key="sc_input")
-if col_s.button("💾 Arşive Kaydet"):
+sc_name_input = col_n.text_input("Senaryo Adı:", key="sc_input", placeholder="Örn: Q2 Lojistik Planı")
+if col_s.button("💾 Arşive Kaydet", use_container_width=True):
     if sc_name_input:
         edited_df.to_csv(DB_FILE, index=False)
         scenarios[sc_name_input] = edited_df.to_dict(orient="list")
         save_scenarios(scenarios)
-        st.success("Kaydedildi!")
+        st.success(f"'{sc_name_input}' senaryolara eklendi!")
         st.rerun()
 
 current_excel = to_excel(edited_df)
-col_d.download_button(label="🧪 Excel İndir", data=current_excel, file_name="hepsiburada_export.xlsx")
+col_d.download_button(label="🧪 Excel İndir", data=current_excel, file_name="hepsiburada_export.xlsx", use_container_width=True)
 
 # --- OPTİMİZASYON ---
 st.divider()
@@ -161,4 +176,4 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
         st.error(f"Hata: {e}")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("HB Depo Optimizasyon v2.3")
+st.sidebar.caption("HB Depo Optimizasyon v2.4")
