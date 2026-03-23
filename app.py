@@ -11,7 +11,6 @@ st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 DB_FILE = "shared_warehouse_data.csv"
 SCENARIO_FILE = "scenarios.json"
 
-# FABRİKA AYARLARI
 initial_data = {
     "Depo Adı": ["Gebze Depo", "İzmir Torbalı Depo", "İzmir Pancar Depo", "Düzce Depo", "Bilecik Depo", "Adana Depo", "İzmir Pınarbaşı Depo"],
     "Kapasite (m3)": [19301, 13824, 3365, 15343, 22000, 2133, 4694],
@@ -40,17 +39,12 @@ def reset_system():
     st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1
     st.rerun()
 
-# Binlik ayraç (Nokta) ekleme fonksiyonu
 def format_with_dots(val):
-    try:
-        return "{:,.0f}".format(float(val)).replace(",", ".")
-    except:
-        return val
+    try: return "{:,.0f}".format(float(val)).replace(",", ".")
+    except: return val
 
-# Geriye sayıya çevirme fonksiyonu (Hesaplama için)
 def unformat_dots(val):
     if isinstance(val, str):
-        # Noktaları kaldırıp sayıya çeviriyoruz
         clean_val = val.replace(".", "").replace(",", "")
         return float(clean_val) if clean_val else 0.0
     return val
@@ -88,17 +82,16 @@ else:
 
 st.subheader("📊 Aktif Çalışma Tablosu")
 
-# Gösterim için formatlıyoruz
 display_df = df.copy()
 display_df["Kapasite (m3)"] = display_df["Kapasite (m3)"].apply(format_with_dots)
 display_df["Kira Maliyeti (₺)"] = display_df["Kira Maliyeti (₺)"].apply(format_with_dots)
 
-# !!! HİZALAMA AYARLARI (ALIGNMENT) !!!
+# HATAYI DÜZELTEN KISIM: alignment parametresini çıkardım, varsayılan akışa bıraktım
 column_config = {
-    "Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium", alignment="left"),
-    "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)", alignment="center"),
-    "Kira Maliyeti (₺)": st.column_config.TextColumn("Kira Maliyeti (₺)", alignment="center"),
-    "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f", alignment="center"),
+    "Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium"),
+    "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)"),
+    "Kira Maliyeti (₺)": st.column_config.TextColumn("Kira Maliyeti (₺)"),
+    "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f"),
 }
 
 edited_df_display = st.data_editor(
@@ -109,7 +102,6 @@ edited_df_display = st.data_editor(
     key=f"editor_v{st.session_state['table_version']}"
 )
 
-# Düzenlenen veriyi sayısal hale geri getiriyoruz
 edited_df = edited_df_display.copy()
 edited_df["Kapasite (m3)"] = edited_df["Kapasite (m3)"].apply(unformat_dots)
 edited_df["Kira Maliyeti (₺)"] = edited_df["Kira Maliyeti (₺)"].apply(unformat_dots)
