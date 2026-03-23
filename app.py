@@ -8,6 +8,20 @@ from io import BytesIO
 # 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
+# --- CSS İLE HÜCRELERİ ORTALAMA ---
+st.markdown("""
+    <style>
+    /* Tablodaki tüm veri hücrelerini ortala (Depo adı hariç tutmaya çalışacağız) */
+    [data-testid="stTable"] td {
+        text-align: center !important;
+    }
+    /* Data Editor içindeki rakam giriş alanlarını ortala */
+    .st-emotion-cache-1wivap2 { 
+        text-align: center !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 DB_FILE = "shared_warehouse_data.csv"
 SCENARIO_FILE = "scenarios.json"
 
@@ -86,7 +100,7 @@ display_df = df.copy()
 display_df["Kapasite (m3)"] = display_df["Kapasite (m3)"].apply(format_with_dots)
 display_df["Kira Maliyeti (₺)"] = display_df["Kira Maliyeti (₺)"].apply(format_with_dots)
 
-# HATAYI DÜZELTEN KISIM: alignment parametresini çıkardım, varsayılan akışa bıraktım
+# Hizalama hatasını önlemek için column_config'i en sade haliyle bıraktık
 column_config = {
     "Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium"),
     "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)"),
