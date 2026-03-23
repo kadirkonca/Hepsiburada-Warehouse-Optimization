@@ -5,7 +5,7 @@ import os
 import json
 from io import BytesIO
 
-# 1. SAYFA VE DOSYA AYARLARI
+# 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
 DB_FILE = "shared_warehouse_data.csv"
@@ -95,6 +95,7 @@ if col_s.button("💾 Arşive Kaydet"):
         edited_df.to_csv(DB_FILE, index=False)
         scenarios[sc_name_input] = edited_df.to_dict(orient="list")
         save_scenarios(scenarios)
+        st.success(f"'{sc_name_input}' senaryolara eklendi!")
         st.rerun()
 
 current_excel = to_excel(edited_df)
@@ -108,19 +109,14 @@ if st.button("🚀 Optimizasyonu Çalıştır"):
         prob = pulp.LpProblem("Warehouse_Minimization", pulp.LpMinimize)
         depolar = edited_df["Depo Adı"].tolist()
         usage = pulp.LpVariable.dicts("m3", depolar, lowBound=0)
-        
         prob += pulp.lpSum([(usage[d] * edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0]) + edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0] for d in depolar])
         prob += pulp.lpSum([usage[d] for d in depolar]) == target_demand
         for d in depolar:
             prob += usage[d] <= edited_df.loc[edited_df["Depo Adı"] == d, "Kapasite (m3)"].values[0]
-            
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
-        
         if pulp.LpStatus[prob.status] == 'Optimal':
-            cost_val = pulp.value(prob.objective)
-            cost_str = "{:,.0f}".format(cost_val).replace(",", ".")
+            cost_str = "{:,.0f}".format(pulp.value(prob.objective)).replace(",", ".")
             st.subheader(f"💰 Minimum Toplam Maliyet: {cost_str} ₺")
-            
             res_df = pd.DataFrame([{"Depo": d, "Atanan": round(usage[d].varValue, 2)} for d in depolar])
             st.dataframe(res_df, use_container_width=True)
             st.bar_chart(res_df.set_index("Depo"))
