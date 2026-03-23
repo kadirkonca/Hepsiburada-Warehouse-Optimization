@@ -18,6 +18,7 @@ initial_data = {
     "Fix Cost (m3 Başı)": [185.19, 31.15, 277.30, 73.51, 55.12, 73.18, 48.03]
 }
 
+# --- FONKSİYONLAR ---
 def load_scenarios():
     if os.path.exists(SCENARIO_FILE):
         with open(SCENARIO_FILE, "r") as f: return json.load(f)
@@ -80,13 +81,23 @@ else:
     current_df = pd.DataFrame(initial_data)
 
 st.subheader("📊 Aktif Çalışma Tablosu")
+
+# Tablo konfigürasyonu - KESİN ÇÖZÜM İÇİN FORMAT DEĞİŞTİ
 column_config = {
     "Kapasite (m3)": st.column_config.NumberColumn(format="%d"),
     "Kira Maliyeti (₺)": st.column_config.NumberColumn(format="%d"),
     "Fix Cost (m3 Başı)": st.column_config.NumberColumn(format="%.2f"),
 }
-edited_df = st.data_editor(current_df, use_container_width=True, num_rows="dynamic", column_config=column_config, key=f"editor_v{st.session_state['table_version']}")
 
+edited_df = st.data_editor(
+    current_df, 
+    use_container_width=True, 
+    num_rows="dynamic", 
+    column_config=column_config, 
+    key=f"editor_v{st.session_state['table_version']}"
+)
+
+# --- KAYDETME VE DIŞA AKTARMA ---
 st.markdown("### 💾 Senaryoyu Kaydet")
 col_n, col_s, col_d = st.columns([2, 1, 1])
 sc_name_input = col_n.text_input("Senaryo Adı:", key="sc_input")
@@ -95,7 +106,7 @@ if col_s.button("💾 Arşive Kaydet"):
         edited_df.to_csv(DB_FILE, index=False)
         scenarios[sc_name_input] = edited_df.to_dict(orient="list")
         save_scenarios(scenarios)
-        st.success(f"'{sc_name_input}' senaryolara eklendi!")
+        st.success(f"'{sc_name_input}' kaydedildi!")
         st.rerun()
 
 current_excel = to_excel(edited_df)
@@ -109,16 +120,29 @@ if st.button("🚀 Optimizasyonu Çalıştır"):
         prob = pulp.LpProblem("Warehouse_Minimization", pulp.LpMinimize)
         depolar = edited_df["Depo Adı"].tolist()
         usage = pulp.LpVariable.dicts("m3", depolar, lowBound=0)
+        
         prob += pulp.lpSum([(usage[d] * edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0]) + edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0] for d in depolar])
         prob += pulp.lpSum([usage[d] for d in depolar]) == target_demand
         for d in depolar:
             prob += usage[d] <= edited_df.loc[edited_df["Depo Adı"] == d, "Kapasite (m3)"].values[0]
+            
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
+        
         if pulp.LpStatus[prob.status] == 'Optimal':
-            cost_str = "{:,.0f}".format(pulp.value(prob.objective)).replace(",", ".")
-            st.subheader(f"💰 Minimum Toplam Maliyet: {cost_str} ₺")
-            res_df = pd.DataFrame([{"Depo": d, "Atanan": round(usage[d].varValue, 2)} for d in depolar])
-            st.dataframe(res_df, use_container_width=True)
+            cost_val = pulp.value(prob.objective)
+            # TÜRKİYE FORMATI İÇİN ÖZEL AYAR (1.500.400 ŞEKLİNDE)
+            cost_str = f"{cost_val:,.0f}".replace(",", ".")
+            st.markdown(f"### 💰 Minimum Toplam Maliyet: **{cost_str} ₺**")
+            
+            res_data = []
+            for d in depolar:
+                val = usage[d].varValue
+                # Sonuç tablosundaki rakamları da noktalı yapalım
+                res_data.append({"Depo": d, "Atanan (m3)": val})
+            
+            res_df = pd.DataFrame(res_data)
+            # Sonuç tablosu gösterimi
+            st.dataframe(res_df.style.format({"Atanan (m3)": "{:,.2f}"}), use_container_width=True)
             st.bar_chart(res_df.set_index("Depo"))
     except Exception as e:
         st.error(f"Hata: {e}")
