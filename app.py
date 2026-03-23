@@ -39,6 +39,21 @@ def reset_system():
     st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1
     st.rerun()
 
+# Rakamları hem noktalı yapan hem de boşlukla "ortalayan" fonksiyon
+def format_and_center(val):
+    try:
+        formatted = "{:,.0f}".format(float(val)).replace(",", ".")
+        # Başına ve sonuna boşluk ekleyerek ortada görünmesini sağlıyoruz
+        return f"      {formatted}      "
+    except:
+        return val
+
+def unformat_dots(val):
+    if isinstance(val, str):
+        clean_val = val.strip().replace(".", "").replace(",", "")
+        return float(clean_val) if clean_val else 0.0
+    return val
+
 if "table_version" not in st.session_state: st.session_state["table_version"] = 0
 scenarios = load_scenarios()
 
@@ -72,37 +87,31 @@ else:
 
 st.subheader("📊 Aktif Çalışma Tablosu")
 
-# !!! HİZALAMA VE FORMATLAMA AYARLARI !!!
-# Rakamları sayı olarak bırakıyoruz ama 'NumberColumn' ile merkezi hizalıyoruz
+# Tabloyu görsel olarak hazırlıyoruz
+display_df = df.copy()
+display_df["Kapasite (m3)"] = display_df["Kapasite (m3)"].apply(format_and_center)
+display_df["Kira Maliyeti (₺)"] = display_df["Kira Maliyeti (₺)"].apply(format_and_center)
+
+# HATA VEREN alignment="center" PARAMETRESİNİ TAMAMEN SİLDİK
 column_config = {
-    "Depo Adı": st.column_config.TextColumn(
-        "Depo Adı", 
-        width="medium"
-    ),
-    "Kapasite (m3)": st.column_config.NumberColumn(
-        "Kapasite (m3)",
-        format="%d",
-        alignment="center" # MERKEZE HİZALA
-    ),
-    "Kira Maliyeti (₺)": st.column_config.NumberColumn(
-        "Kira Maliyeti (₺)",
-        format="%d",
-        alignment="center" # MERKEZE HİZALA
-    ),
-    "Fix Cost (m3 Başı)": st.column_config.NumberColumn(
-        "Fix Cost (m3 Başı)",
-        format="%.2f",
-        alignment="center" # MERKEZE HİZALA
-    ),
+    "Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium"),
+    "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)"),
+    "Kira Maliyeti (₺)": st.column_config.TextColumn("Kira Maliyeti (₺)"),
+    "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f"),
 }
 
-edited_df = st.data_editor(
-    df, 
+edited_df_display = st.data_editor(
+    display_df, 
     use_container_width=True, 
     num_rows="dynamic",
     column_config=column_config,
     key=f"editor_v{st.session_state['table_version']}"
 )
+
+# Arka planda sayısal işlem için temizliyoruz
+edited_df = edited_df_display.copy()
+edited_df["Kapasite (m3)"] = edited_df["Kapasite (m3)"].apply(unformat_dots)
+edited_df["Kira Maliyeti (₺)"] = edited_df["Kira Maliyeti (₺)"].apply(unformat_dots)
 
 # --- KAYDETME ---
 st.markdown("### 💾 Senaryoyu Kaydet")
@@ -113,11 +122,11 @@ if col_s.button("💾 Arşive Kaydet"):
         edited_df.to_csv(DB_FILE, index=False)
         scenarios[sc_name_input] = edited_df.to_dict(orient="list")
         save_scenarios(scenarios)
-        st.success("Başarıyla Arşivlendi!")
+        st.success("Kaydedildi!")
         st.rerun()
 
 current_excel = to_excel(edited_df)
-col_d.download_button(label="🧪 Excel İndir", data=current_excel, file_name="hepsiburada_plan.xlsx")
+col_d.download_button(label="🧪 Excel İndir", data=current_excel, file_name="hepsiburada_export.xlsx")
 
 # --- OPTİMİZASYON ---
 st.divider()
@@ -129,14 +138,14 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
         usage = pulp.LpVariable.dicts("m3", depolar, lowBound=0)
         
         prob += pulp.lpSum([
-            (usage[d] * edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0]) + 
-            edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0] 
+            (usage[d] * float(edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + 
+            float(edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) 
             for d in depolar
         ])
         
         prob += pulp.lpSum([usage[d] for d in depolar]) == target_demand
         for d in depolar:
-            prob += usage[d] <= edited_df.loc[edited_df["Depo Adı"] == d, "Kapasite (m3)"].values[0]
+            prob += usage[d] <= float(edited_df.loc[edited_df["Depo Adı"] == d, "Kapasite (m3)"].values[0])
             
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
         
@@ -149,7 +158,7 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
             st.dataframe(res_df.style.format({"Atanan (m3)": "{:,.2f}"}), use_container_width=True)
             st.bar_chart(res_df.set_index("Depo"))
     except Exception as e:
-        st.error(f"Hesaplama Hatası: {e}")
+        st.error(f"Hata: {e}")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("HB Depo Optimizasyon v2.2")
+st.sidebar.caption("HB Depo Optimizasyon v2.3")
