@@ -11,6 +11,7 @@ st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 DB_FILE = "shared_warehouse_data.csv"
 SCENARIO_FILE = "scenarios.json"
 
+# FABRİKA AYARLARI
 initial_data = {
     "Depo Adı": ["Gebze Depo", "İzmir Torbalı Depo", "İzmir Pancar Depo", "Düzce Depo", "Bilecik Depo", "Adana Depo", "İzmir Pınarbaşı Depo"],
     "Kapasite (m3)": [19301, 13824, 3365, 15343, 22000, 2133, 4694],
@@ -30,7 +31,7 @@ def save_scenarios(scs):
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='DepoVerileri')
+        df.to_excel(writer, index=False)
     return output.getvalue()
 
 def reset_system():
@@ -38,6 +39,13 @@ def reset_system():
     st.cache_data.clear()
     st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1
     st.rerun()
+
+# Binlik ayraç (Nokta) ekleme fonksiyonu
+def format_with_dots(val):
+    try:
+        return "{:,.0f}".format(float(val)).replace(",", ".")
+    except:
+        return val
 
 if "table_version" not in st.session_state: st.session_state["table_version"] = 0
 scenarios = load_scenarios()
@@ -60,9 +68,6 @@ if scenarios:
 else:
     st.sidebar.info("Kayıtlı senaryo yok.")
 
-st.sidebar.markdown("---")
-uploaded_file = st.sidebar.file_uploader("Excel/CSV Yükle", type=["csv", "xlsx"])
-
 # --- ANA EKRAN ---
 st.title("🚀 Hepsiburada Senaryo Merkezi")
 if st.button("🚨 SİSTEMİ SIFIRLA"):
@@ -75,22 +80,30 @@ else:
 
 st.subheader("📊 Aktif Çalışma Tablosu")
 
-# !!! KRİTİK DEĞİŞİKLİK: TABLO FORMATINI MANUEL ZORLUYORUZ !!!
-column_config = {
-    "Kapasite (m3)": st.column_config.NumberColumn(format="%d"),
-    "Kira Maliyeti (₺)": st.column_config.NumberColumn(format="%d"),
-    "Fix Cost (m3 Başı)": st.column_config.NumberColumn(format="%.2f"),
-}
+# !!! ZORLA FORMATLAMA: TABLOYU GÖSTERİRKEN SAYILARI NOKTALI METNE ÇEVİRİYORUZ !!!
+display_df = df.copy()
+display_df["Kapasite (m3)"] = display_df["Kapasite (m3)"].apply(format_with_dots)
+display_df["Kira Maliyeti (₺)"] = display_df["Kira Maliyeti (₺)"].apply(format_with_dots)
 
-# data_editor içinde binlik ayraçları tarayıcı ayarlarından bağımsız zorlamak için locale ekledik
-edited_df = st.data_editor(
-    df, 
+edited_df_display = st.data_editor(
+    display_df, 
     use_container_width=True, 
-    num_rows="dynamic", 
-    column_config=column_config,
+    num_rows="dynamic",
     key=f"editor_v{st.session_state['table_version']}"
 )
 
+# Geriye sayıya çevirme fonksiyonu (Hesaplama için)
+def unformat_dots(val):
+    if isinstance(val, str):
+        return float(val.replace(".", "").replace(",", ""))
+    return val
+
+# Düzenlenen veriyi sayısal hale geri getiriyoruz (Kaydetme ve Optimizasyon için)
+edited_df = edited_df_display.copy()
+edited_df["Kapasite (m3)"] = edited_df["Kapasite (m3)"].apply(unformat_dots)
+edited_df["Kira Maliyeti (₺)"] = edited_df["Kira Maliyeti (₺)"].apply(unformat_dots)
+
+# --- KAYDETME ---
 st.markdown("### 💾 Senaryoyu Kaydet")
 col_n, col_s, col_d = st.columns([2, 1, 1])
 sc_name_input = col_n.text_input("Senaryo Adı:", key="sc_input")
@@ -99,6 +112,7 @@ if col_s.button("💾 Arşive Kaydet"):
         edited_df.to_csv(DB_FILE, index=False)
         scenarios[sc_name_input] = edited_df.to_dict(orient="list")
         save_scenarios(scenarios)
+        st.success("Kaydedildi!")
         st.rerun()
 
 current_excel = to_excel(edited_df)
@@ -113,25 +127,20 @@ if st.button("🚀 Optimizasyonu Çalıştır"):
         depolar = edited_df["Depo Adı"].tolist()
         usage = pulp.LpVariable.dicts("m3", depolar, lowBound=0)
         
-        prob += pulp.lpSum([(usage[d] * edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0]) + edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0] for d in depolar])
+        prob += pulp.lpSum([(usage[d] * float(edited_df.loc[edited_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + float(edited_df.loc[edited_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in depolar])
         prob += pulp.lpSum([usage[d] for d in depolar]) == target_demand
         for d in depolar:
-            prob += usage[d] <= edited_df.loc[edited_df["Depo Adı"] == d, "Kapasite (m3)"].values[0]
+            prob += usage[d] <= float(edited_df.loc[edited_df["Depo Adı"] == d, "Kapasite (m3)"].values[0])
             
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
         
         if pulp.LpStatus[prob.status] == 'Optimal':
             cost_val = pulp.value(prob.objective)
-            # BURASI KESİN NOKTALI GELECEK:
             cost_formatted = "{:,.0f}".format(cost_val).replace(",", ".")
             st.markdown(f"### 💰 Minimum Toplam Maliyet: **{cost_formatted} ₺**")
             
             res_df = pd.DataFrame([{"Depo": d, "Atanan": round(usage[d].varValue, 2)} for d in depolar])
-            
-            # Sonuç tablosunda binlik ayraç zorlaması
-            st.write("**Dağılım Planı:**")
             st.dataframe(res_df.style.format({"Atanan": "{:,.2f}"}), use_container_width=True)
-            st.bar_chart(res_df.set_index("Depo"))
     except Exception as e:
         st.error(f"Hata: {e}")
 
