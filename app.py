@@ -124,6 +124,7 @@ if len(filter_months) > 1:
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
 
+# Sıralama
 sort_map = {"Depo Adı (A-Z)": ("Depo Adı", True), "Depo Adı (Z-A)": ("Depo Adı", False), "Kapasite (Yüksek->Düşük)": ("Kapasite (m3)", False), "Kapasite (Düşük->Yüksek)": ("Kapasite (m3)", True), "Kira Maliyeti (Yüksek->Düşük)": ("Kira Maliyeti (₺)", False), "Kira Maliyeti (Düşük->Yüksek)": ("Kira Maliyeti (₺)", True), "Fix Cost (Yüksek->Düşük)": ("Fix Cost (m3 Başı)", False), "Fix Cost (Düşük->Yüksek)": ("Fix Cost (m3 Başı)", True)}
 col, asc = sort_map[sort_option]
 display_df = display_df.sort_values(by=col, ascending=asc)
@@ -139,53 +140,60 @@ edited_df_display = st.data_editor(view_df, use_container_width=True, num_rows="
 # --- OPTİMİZASYON ---
 st.divider()
 st.markdown("### 🎯 Akıllı Operasyon Optimizasyonu")
-target_demand = st.number_input("📥 Hedeflenen Sevkiyat Talebi (m3)", value=35000)
+
+# Maksimum Kapasiteyi Hesapla (Dinamik)
+temp_opt_df = edited_df_display.copy()
+temp_opt_df["Kapasite (m3)"] = temp_opt_df["Kapasite (m3)"].apply(unformat_num)
+max_cap_val = temp_opt_df["Kapasite (m3)"].sum()
+
+c_opt1, c_opt2 = st.columns([2, 1])
+with c_opt1:
+    target_demand = st.number_input("📥 Hedeflenen Sevkiyat Talebi (m3)", value=min(35000.0, max_cap_val))
+with c_opt2:
+    st.markdown(f"<p style='margin-top: 32px; color: #FF6000; font-weight: bold;'>⚠️ Maks. Kapasite: {'{:,.0f}'.format(max_cap_val).replace(',', '.')} m3</p>", unsafe_allow_html=True)
+
 if st.button("🚀 Optimizasyonu Başlat", use_container_width=True):
-    try:
-        opt_df = edited_df_display.copy()
-        opt_df["Kapasite (m3)"] = opt_df["Kapasite (m3)"].apply(unformat_num)
-        opt_df["Kira Maliyeti (₺)"] = opt_df["Kira Maliyeti (₺)"].apply(unformat_num)
-        opt_df_valid = opt_df[opt_df["Kapasite (m3)"] > 0].copy()
-        
-        prob = pulp.LpProblem("WH_Min", pulp.LpMinimize)
-        usage = pulp.LpVariable.dicts("m3", opt_df_valid["Depo Adı"], lowBound=0)
-        
-        prob += pulp.lpSum([(usage[d] * float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in opt_df_valid["Depo Adı"]])
-        prob += pulp.lpSum([usage[d] for d in opt_df_valid["Depo Adı"]]) == target_demand
-        for d in opt_df_valid["Depo Adı"]: 
-            prob += usage[d] <= float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kapasite (m3)"].values[0])
+    if target_demand > max_cap_val:
+        st.error(f"❌ Kapasite yetersiz! Girdiğiniz {target_demand} m3 yük, mevcut {'{:,.0f}'.format(max_cap_val).replace(',', '.')} m3 kapasiteye sığmıyor.")
+    else:
+        try:
+            opt_df = edited_df_display.copy()
+            opt_df["Kapasite (m3)"] = opt_df["Kapasite (m3)"].apply(unformat_num)
+            opt_df["Kira Maliyeti (₺)"] = opt_df["Kira Maliyeti (₺)"].apply(unformat_num)
+            opt_df_valid = opt_df[opt_df["Kapasite (m3)"] > 0].copy()
             
-        prob.solve(pulp.PULP_CBC_CMD(msg=0))
-        
-        if pulp.LpStatus[prob.status] == 'Optimal':
-            total_cost_val = pulp.value(prob.objective)
-            st.success(f"✅ Optimizasyon Başarılı! Toplam Maliyet: {'{:,.0f}'.format(total_cost_val).replace(',', '.')} ₺")
+            prob = pulp.LpProblem("WH_Min", pulp.LpMinimize)
+            usage = pulp.LpVariable.dicts("m3", opt_df_valid["Depo Adı"], lowBound=0)
             
-            res_data = []
-            for d in opt_df_valid["Depo Adı"]:
-                atanan = usage[d].varValue
-                kapasite = float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kapasite (m3)"].values[0])
-                doluluk = (atanan / kapasite) * 100 if kapasite > 0 else 0
+            prob += pulp.lpSum([(usage[d] * float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in opt_df_valid["Depo Adı"]])
+            prob += pulp.lpSum([usage[d] for d in opt_df_valid["Depo Adı"]]) == target_demand
+            for d in opt_df_valid["Depo Adı"]: 
+                prob += usage[d] <= float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kapasite (m3)"].values[0])
                 
-                if atanan <= 0.1: durum = "❌ Atıl (Kapat)"
-                elif doluluk >= 99.9: durum = "✅ Tam Dolu"
-                else: durum = "⚠️ Kısmi Kullanım"
-                
-                # Formatlama: m3 rakam gibi (binlik nokta), Doluluk % olarak (tek hane)
-                m3_fmt = "{:,.0f}".format(atanan).replace(",", ".")
-                doluluk_fmt = f"% {doluluk:.1f}"
-                
-                res_data.append({
-                    "Depo": d, 
-                    "Atanan (m3)": m3_fmt, 
-                    "Doluluk (%)": doluluk_fmt, 
-                    "Durum Tavsiyesi": durum
-                })
+            prob.solve(pulp.PULP_CBC_CMD(msg=0))
             
-            res_df = pd.DataFrame(res_data)
-            st.dataframe(res_df, use_container_width=True)
-        else: st.error("❌ Kapasite yetersiz! Bu yük bu depolara sığmıyor.")
-    except Exception as e: st.error(f"Hata: {e}")
+            if pulp.LpStatus[prob.status] == 'Optimal':
+                total_cost_val = pulp.value(prob.objective)
+                st.success(f"✅ Optimizasyon Başarılı! Toplam Maliyet: {'{:,.0f}'.format(total_cost_val).replace(',', '.')} ₺")
+                
+                res_data = []
+                for d in opt_df_valid["Depo Adı"]:
+                    atanan = usage[d].varValue
+                    kapasite = float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kapasite (m3)"].values[0])
+                    doluluk = (atanan / kapasite) * 100 if kapasite > 0 else 0
+                    
+                    if atanan <= 0.1: durum = "❌ Atıl (Kapat)"
+                    elif doluluk >= 99.9: durum = "✅ Tam Dolu"
+                    else: durum = "⚠️ Kısmi Kullanım"
+                    
+                    m3_fmt = "{:,.0f}".format(atanan).replace(",", ".")
+                    doluluk_fmt = f"% {doluluk:.1f}"
+                    
+                    res_data.append({"Depo": d, "Atanan (m3)": m3_fmt, "Doluluk (%)": doluluk_fmt, "Durum Tavsiyesi": durum})
+                
+                st.dataframe(pd.DataFrame(res_data), use_container_width=True)
+            else: st.error("❌ Matematiksel bir hata oluştu.")
+        except Exception as e: st.error(f"Hata: {e}")
 
 # --- KAYDETME ---
 st.divider()
