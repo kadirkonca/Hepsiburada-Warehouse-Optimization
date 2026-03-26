@@ -9,17 +9,19 @@ from datetime import datetime
 # 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
-# --- SOL ÜST LOGO VE BAŞLIK EKLEME ---
-# Hepsiburada logosu ve alt başlığı sidebar'ın en tepesine yerleştiriyoruz
+# --- SOL ÜST LOGO VE ÖZEL TASARIM ---
+# Hepsiburada Turuncusu: #FF6000
 st.sidebar.markdown(
     """
-    <div style="text-align: center; margin-bottom: 20px;">
-        <img src="https://hepsiburada.github.io/logo/hb-logo.png" width="180">
-        <h2 style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #FF6000; margin-top: 10px;">
+    <div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px; border: 1px solid #FF6000;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Hepsiburada_logo_official.svg/1024px-Hepsiburada_logo_official.svg.png" width="150" style="margin-bottom: 10px;">
+        <h1 style="font-family: 'Arial Black', Gadget, sans-serif; color: #FF6000; font-size: 22px; margin: 0; padding: 0;">
+            HEPSİBURADA
+        </h1>
+        <h2 style="font-family: 'Verdana', Geneva, sans-serif; color: #FFFFFF; font-size: 14px; font-weight: 100; margin-top: 5px; letter-spacing: 1px;">
             Warehouse Optimization
         </h2>
     </div>
-    <hr style="border: 1px solid #FF6000;">
     """,
     unsafe_allow_html=True
 )
@@ -129,14 +131,10 @@ with f_col2:
 with f_col3:
     sort_option = st.selectbox("🔃 Tabloyu Sırala:", 
                                options=[
-                                   "Depo Adı (A-Z)", 
-                                   "Depo Adı (Z-A)", 
-                                   "Kapasite (Yüksek -> Düşük)", 
-                                   "Kapasite (Düşük -> Yüksek)", 
-                                   "Kira Maliyeti (Yüksek -> Düşük)",
-                                   "Kira Maliyeti (Düşük -> Yüksek)",
-                                   "Fix Cost (Yüksek -> Düşük)",
-                                   "Fix Cost (Düşük -> Yüksek)"
+                                   "Depo Adı (A-Z)", "Depo Adı (Z-A)", 
+                                   "Kapasite (Yüksek -> Düşük)", "Kapasite (Düşük -> Yüksek)", 
+                                   "Kira Maliyeti (Yüksek -> Düşük)", "Kira Maliyeti (Düşük -> Yüksek)",
+                                   "Fix Cost (Yüksek -> Düşük)", "Fix Cost (Düşük -> Yüksek)"
                                ])
 
 # Filtre Mantığı
@@ -153,9 +151,7 @@ filtered_df = main_df[(main_df["Yıl"] == selected_year) & (main_df["Ay"].isin(f
 # Konsolidasyon
 if len(filter_months) > 1:
     display_df = filtered_df.groupby("Depo Adı").agg({
-        "Kapasite (m3)": "sum",
-        "Kira Maliyeti (₺)": "sum",
-        "Fix Cost (m3 Başı)": "mean"
+        "Kapasite (m3)": "sum", "Kira Maliyeti (₺)": "sum", "Fix Cost (m3 Başı)": "mean"
     }).reset_index()
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
