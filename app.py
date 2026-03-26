@@ -112,15 +112,17 @@ with f_col1:
 with f_col2:
     selected_period = st.selectbox("⏱️ Periyot Seçin:", options=PERIYOT_LISTESI)
 with f_col3:
-    # !!! GÜNCELLENEN SIRALAMA SEÇENEKLERİ !!!
+    # !!! FIX COST SEÇENEKLERİ EKLENDİ !!!
     sort_option = st.selectbox("🔃 Tabloyu Sırala:", 
                                options=[
                                    "Depo Adı (A-Z)", 
                                    "Depo Adı (Z-A)", 
                                    "Kapasite (Yüksek -> Düşük)", 
                                    "Kapasite (Düşük -> Yüksek)", 
-                                   "Maliyet (Yüksek -> Düşük)",
-                                   "Maliyet (Düşük -> Yüksek)"
+                                   "Kira Maliyeti (Yüksek -> Düşük)",
+                                   "Kira Maliyeti (Düşük -> Yüksek)",
+                                   "Fix Cost (Yüksek -> Düşük)",
+                                   "Fix Cost (Düşük -> Yüksek)"
                                ])
 
 # Filtre Mantığı
@@ -144,7 +146,7 @@ if len(filter_months) > 1:
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
 
-# !!! SIRALAMA MANTIĞI UYGULAMA !!!
+# !!! SIRALAMA MANTIĞI UYGULAMA (FIX COST DAHİL) !!!
 if sort_option == "Depo Adı (A-Z)":
     display_df = display_df.sort_values(by="Depo Adı", ascending=True)
 elif sort_option == "Depo Adı (Z-A)":
@@ -153,10 +155,14 @@ elif sort_option == "Kapasite (Yüksek -> Düşük)":
     display_df = display_df.sort_values(by="Kapasite (m3)", ascending=False)
 elif sort_option == "Kapasite (Düşük -> Yüksek)":
     display_df = display_df.sort_values(by="Kapasite (m3)", ascending=True)
-elif sort_option == "Maliyet (Yüksek -> Düşük)":
+elif sort_option == "Kira Maliyeti (Yüksek -> Düşük)":
     display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=False)
-elif sort_option == "Maliyet (Düşük -> Yüksek)":
+elif sort_option == "Kira Maliyeti (Düşük -> Yüksek)":
     display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=True)
+elif sort_option == "Fix Cost (Yüksek -> Düşük)":
+    display_df = display_df.sort_values(by="Fix Cost (m3 Başı)", ascending=False)
+elif sort_option == "Fix Cost (Düşük -> Yüksek)":
+    display_df = display_df.sort_values(by="Fix Cost (m3 Başı)", ascending=True)
 
 st.subheader(f"📊 {selected_year} - {selected_period}")
 
@@ -216,3 +222,6 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
             res_df = pd.DataFrame([{"Depo": d, "Atanan (m3)": round(usage[d].varValue, 2)} for d in depolar])
             st.dataframe(res_df.style.format({"Atanan (m3)": "{:,.2f}"}), use_container_width=True)
     except Exception as e: st.error(f"Hata: {e}")
+
+st.sidebar.markdown("---")
+st.sidebar.caption("v4.4 - Fix Cost Sıralama Güncellemesi")
