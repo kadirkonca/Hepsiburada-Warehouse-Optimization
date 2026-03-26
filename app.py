@@ -9,7 +9,7 @@ from datetime import datetime
 # 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
-# Session State Yönetimi
+# Session State Yönetimi (Tablo versiyonu ve hata engelleme)
 if "table_version" not in st.session_state:
     st.session_state["table_version"] = 0
 
@@ -36,7 +36,7 @@ PERIYOT_LISTESI = AYLAR + ["Q1", "Q2", "Q3", "Q4", "H1", "H2", "FY (Full Year)"]
 CEYREKLER = {"Q1": ["Ocak", "Şubat", "Mart"], "Q2": ["Nisan", "Mayıs", "Haziran"], "Q3": ["Temmuz", "Ağustos", "Eylül"], "Q4": ["Ekim", "Kasım", "Aralık"]}
 ALTI_AYLIK = {"H1": ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran"], "H2": ["Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]}
 
-# --- VERİTABANI BAŞLATMA (ORİJİNAL VERİLER) ---
+# --- VERİTABANI BAŞLATMA (ASLA DEĞİŞMEYEN ANA VERİLER) ---
 def initialize_database():
     data_2025 = []
     master_dict = {
@@ -57,7 +57,17 @@ def initialize_database():
 
 if not os.path.exists(DB_FILE): initialize_database()
 
-# --- FONKSİYONLAR ---
+# --- YARDIMCI FONKSİYONLAR ---
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f: return json.load(f)
+        except: return []
+    return []
+
+def save_history_all(history):
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f: json.dump(history, f, ensure_ascii=False, indent=4)
+
 def format_num(val):
     try: return f"{'{:,.0f}'.format(float(val)).replace(',', '.')}"
     except: return val
@@ -74,16 +84,44 @@ def get_excel_download(df):
         df.to_excel(writer, index=False, sheet_name='HB_Data')
     return output.getvalue()
 
+full_history = load_history()
+
+# --- SOL PANEL (ARŞİV VE EXCEL YÜKLEME - TÜM ÖZELLİKLER GERİ GELDİ) ---
+st.sidebar.header("📜 Merkezi Senaryo Arşivi")
+if full_history:
+    for idx, entry in enumerate(full_history):
+        with st.sidebar.expander(f"📍 {entry['isim']} | 👤 {entry.get('yukleyen', 'Bilinmiyor')}"):
+            c1, c2 = st.columns(2)
+            if c1.button("📤 Yükle", key=f"h_load_{idx}"):
+                pd.DataFrame(entry['veri']).to_csv(DB_FILE, index=False)
+                st.session_state["table_version"] += 1
+                st.rerun()
+            if c2.button("🗑️ Sil", key=f"h_del_{idx}"):
+                full_history.pop(idx); save_history_all(full_history); st.rerun()
+else: st.sidebar.info("Arşiv boş.")
+
+st.sidebar.markdown("---")
+st.sidebar.header("📤 Dışarıdan Veri Yükle")
+up_user = st.sidebar.text_input("Ad Soyad:", key="up_user")
+up_label = st.sidebar.text_input("Senaryo Adı:", key="up_label")
+uploaded_file = st.sidebar.file_uploader("Dosya Seç (Excel/CSV)", type=["csv", "xlsx"])
+if uploaded_file and up_user and up_label:
+    if st.sidebar.button("✅ Arşive ve Tabloya İşle"):
+        up_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        up_df.to_csv(DB_FILE, index=False)
+        new_entry = {"tarih": datetime.now().strftime("%d.%m.%Y %H:%M"), "isim": up_label, "yukleyen": up_user, "veri": up_df.to_dict(orient="list")}
+        full_history.insert(0, new_entry); save_history_all(full_history)
+        st.session_state["table_version"] += 1; st.rerun()
+
 # --- ANA EKRAN ---
 st.title("🚀 Hepsiburada Stratejik Planlama Merkezi")
 main_df = pd.read_csv(DB_FILE)
 
-# Görünüm Ayarları
+# Filtreler
 f_col1, f_col2, f_col3 = st.columns(3)
 with f_col1: selected_period = st.selectbox("⏱️ Periyot Seçin:", options=PERIYOT_LISTESI, index=0)
 with f_col2: sort_opt = st.selectbox("🔃 Sırala:", options=["Depo Adı", "Kapasite", "Kira"])
 
-# Filtreleme
 filter_months = [selected_period] if selected_period in AYLAR else (CEYREKLER.get(selected_period) or ALTI_AYLIK.get(selected_period) or AYLAR)
 f_df = main_df[main_df["Ay"].isin(filter_months)]
 
@@ -92,17 +130,17 @@ if len(filter_months) > 1:
 else:
     display_df = f_df.drop(columns=["Yıl", "Ay"])
 
-# --- TABLO ÜSTÜ AKSİYON BUTONLARI ---
+# --- TABLO ÜSTÜ KONTROLLER ---
 st.divider()
-c_btn1, c_btn2, c_btn3 = st.columns([2, 1, 1])
-with c_btn1:
-    st.subheader(f"📊 {selected_period} Veri Tablosu")
-with c_btn2:
+c_tab1, c_tab2, c_tab3 = st.columns([2, 1, 1])
+with c_tab1:
+    st.subheader(f"📊 {selected_period} Tablosu")
+with c_tab2:
     if st.button("🔄 Verileri Sıfırla", use_container_width=True):
         initialize_database()
-        st.session_state["table_version"] += 1 # Tabloyu yeniden render etmeye zorlar
+        st.session_state["table_version"] += 1
         st.rerun()
-with c_btn3:
+with c_tab3:
     st.download_button(
         label="📥 Excel Olarak İndir",
         data=get_excel_download(display_df),
@@ -111,7 +149,7 @@ with c_btn3:
         use_container_width=True
     )
 
-# Tablo Düzenleyici
+# Veri Formatlama
 v_df = display_df.copy()
 v_df["Kapasite (m3)"] = v_df["Kapasite (m3)"].apply(format_num)
 v_df["Kira Maliyeti (₺)"] = v_df["Kira Maliyeti (₺)"].apply(format_num)
@@ -123,14 +161,11 @@ column_config = {
     "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f")
 }
 
-# KEY dinamik olduğu için "Verileri Sıfırla" deyince tablo her şeyi unutur ve orijinali yükler
 edited_df = st.data_editor(v_df, use_container_width=True, num_rows="dynamic", column_config=column_config, key=f"editor_{selected_period}_{st.session_state['table_version']}")
 
 # --- OPTİMİZASYON ---
 st.divider()
 st.markdown("### 🎯 Akıllı Operasyon Optimizasyonu")
-
-# Sayısal Temizlik
 opt_prep = edited_df.copy()
 opt_prep["Kapasite (m3)"] = opt_prep["Kapasite (m3)"].apply(unformat_num)
 max_cap = opt_prep["Kapasite (m3)"].sum()
@@ -142,33 +177,44 @@ with c_opt2:
     st.markdown(f"<p style='margin-top: 32px; color: #FF6000; font-weight: bold;'>⚠️ Maks. Kapasite: {format_num(max_cap)} m3</p>", unsafe_allow_html=True)
 
 if st.button("🚀 Optimizasyonu Başlat", use_container_width=True):
-    if target > max_cap:
-        st.error("Kapasite yetersiz!")
+    if target > max_cap: st.error("Kapasite yetersiz!")
     else:
         try:
             opt_final = edited_df.copy()
             opt_final["Kapasite (m3)"] = opt_final["Kapasite (m3)"].apply(unformat_num)
             opt_final["Kira Maliyeti (₺)"] = opt_final["Kira Maliyeti (₺)"].apply(unformat_num)
-            
             valid_df = opt_final[opt_final["Kapasite (m3)"] > 0].copy()
             prob = pulp.LpProblem("WH_Min", pulp.LpMinimize)
             usage = pulp.LpVariable.dicts("m3", valid_df["Depo Adı"], lowBound=0)
-            
+            prob += pulp.lpSum([(usage[d] * float(valid_df.loc[valid_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + float(valid_df.loc[valid_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in valid_df["Depo Adı"]])
+            prob += pulp.lpSum([usage[d] for d in opt_df_valid["Depo Adı"]]) == target # Düzeltildi
+            # Düzeltme: usage[d] döngüsü valid_df üzerinden olmalı
+            prob = pulp.LpProblem("WH_Min", pulp.LpMinimize)
+            usage = pulp.LpVariable.dicts("m", valid_df["Depo Adı"], lowBound=0)
             prob += pulp.lpSum([(usage[d] * float(valid_df.loc[valid_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + float(valid_df.loc[valid_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in valid_df["Depo Adı"]])
             prob += pulp.lpSum([usage[d] for d in valid_df["Depo Adı"]]) == target
-            for d in valid_df["Depo Adı"]: 
-                prob += usage[d] <= float(valid_df.loc[valid_df["Depo Adı"] == d, "Kapasite (m3)"].values[0])
-            
+            for d in valid_df["Depo Adı"]: prob += usage[d] <= float(valid_df.loc[valid_df["Depo Adı"] == d, "Kapasite (m3)"].values[0])
             prob.solve(pulp.PULP_CBC_CMD(msg=0))
-            
             if pulp.LpStatus[prob.status] == 'Optimal':
-                st.success(f"✅ Optimizasyon Başarılı! Toplam Maliyet: {format_num(pulp.value(prob.objective))} ₺")
+                st.success(f"Maliyet: {format_num(pulp.value(prob.objective))} ₺")
                 res = []
                 for d in valid_df["Depo Adı"]:
                     atanan = usage[d].varValue
                     kap = float(valid_df.loc[valid_df["Depo Adı"] == d, "Kapasite (m3)"].values[0])
-                    doluluk = (atanan / kap) * 100 if kap > 0 else 0
-                    res.append({"Depo": d, "Atanan (m3)": format_num(atanan), "Doluluk (%)": f"% {doluluk:.1f}", "Durum": "❌ Atıl" if atanan <= 0.1 else "✅ Kullanımda"})
+                    res.append({"Depo": d, "Atanan (m3)": format_num(atanan), "Doluluk (%)": f"% {(atanan/kap)*100:.1f}" if kap > 0 else "0", "Durum": "❌ Atıl" if atanan <= 0.1 else "✅ Kullanımda"})
                 st.dataframe(pd.DataFrame(res), use_container_width=True)
-            else: st.error("Çözüm bulunamadı.")
         except Exception as e: st.error(f"Hata: {e}")
+
+# --- KAYDETME ---
+st.divider()
+st.markdown("### 💾 Bu Çalışmayı Kaydet")
+c1, c2, c3 = st.columns([1,1,1])
+s_user = c1.text_input("👤 Kaydeden:", placeholder="Kadir Konca")
+s_name = c2.text_input("📝 Senaryo Adı:", placeholder="Plan_v1")
+if c3.button("💾 Arşive Yeni Kayıt Ekle", use_container_width=True):
+    if s_user and s_name:
+        sdf = edited_df.copy()
+        sdf["Kapasite (m3)"] = sdf["Kapasite (m3)"].apply(unformat_num)
+        sdf["Kira Maliyeti (₺)"] = sdf["Kira Maliyeti (₺)"].apply(unformat_num)
+        new_entry = {"tarih": datetime.now().strftime("%d.%m.%Y %H:%M"), "isim": s_name, "yukleyen": s_user, "veri": sdf.to_dict(orient="list")}
+        full_history.insert(0, new_entry); save_history_all(full_history); st.success("Arşivlendi!"); st.rerun()
