@@ -14,7 +14,6 @@ DB_FILE = "shared_warehouse_data.csv"
 HISTORY_FILE = "all_scenarios_history.json" 
 
 # --- SABİT TANIMLAMALAR ---
-# Tüm periyot seçeneklerini tek bir listede topluyoruz
 PERIYOT_LISTESI = [
     "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", 
     "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
@@ -92,7 +91,7 @@ if uploaded_file and up_user and up_label:
 # --- ANA EKRAN ---
 st.title("🚀 Hepsiburada Stratejik Planlama Merkezi")
 
-# Veri Hazırlama
+# Veri Okuma
 if os.path.exists(DB_FILE):
     main_df = pd.read_csv(DB_FILE)
 else:
@@ -104,33 +103,31 @@ else:
         "Fix Cost (m3 Başı)": [185.19, 31.15, 277.30, 73.51, 55.12, 73.18, 48.03]
     })
 
-# --- FİLTRELEME (2 ADIMLI) ---
-st.markdown("### 🔍 Planlama Dönemi")
-f_col1, f_col2 = st.columns(2)
+# --- FİLTRELEME VE SIRALAMA AYARLARI ---
+st.markdown("### 🔍 Görünüm Ayarları")
+f_col1, f_col2, f_col3 = st.columns(3)
 
 with f_col1:
     selected_year = st.selectbox("📅 Yıl Seçin:", options=[2025, 2026], index=0)
-
 with f_col2:
     selected_period = st.selectbox("⏱️ Periyot Seçin:", options=PERIYOT_LISTESI)
+with f_col3:
+    # !!! YENİ: SIRALAMA SEÇENEĞİ !!!
+    sort_option = st.selectbox("🔃 Tabloyu Sırala:", 
+                               options=["Depo Adı (A-Z)", "Kapasite (Yüksek->Düşük)", "Maliyet (Düşük->Yüksek)"])
 
 # Filtre Mantığı
 filter_months = []
-if selected_period in AYLAR:
-    filter_months = [selected_period]
-elif selected_period in CEYREKLER:
-    filter_months = CEYREKLER[selected_period]
-elif selected_period in ALTI_AYLIK:
-    filter_months = ALTI_AYLIK[selected_period]
-elif selected_period == "FY (Full Year)":
-    filter_months = AYLAR
-else:
-    # Seperator seçildiyse varsayılan Ocak getir
-    filter_months = ["Ocak"]
+if selected_period in AYLAR: filter_months = [selected_period]
+elif selected_period in CEYREKLER: filter_months = CEYREKLER[selected_period]
+elif selected_period in ALTI_AYLIK: filter_months = ALTI_AYLIK[selected_period]
+elif selected_period == "FY (Full Year)": filter_months = AYLAR
+else: filter_months = ["Ocak"]
 
-# --- VERİ KONSOLİDASYONU ---
+# Veri Filtreleme
 filtered_df = main_df[(main_df["Yıl"] == selected_year) & (main_df["Ay"].isin(filter_months))]
 
+# Konsolidasyon
 if len(filter_months) > 1:
     display_df = filtered_df.groupby("Depo Adı").agg({
         "Kapasite (m3)": "sum",
@@ -140,9 +137,17 @@ if len(filter_months) > 1:
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
 
+# !!! YENİ: SIRALAMA UYGULAMA !!!
+if sort_option == "Depo Adı (A-Z)":
+    display_df = display_df.sort_values(by="Depo Adı", ascending=True)
+elif sort_option == "Kapasite (Yüksek->Düşük)":
+    display_df = display_df.sort_values(by="Kapasite (m3)", ascending=False)
+elif sort_option == "Maliyet (Düşük->Yüksek)":
+    display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=True)
+
 st.subheader(f"📊 {selected_year} - {selected_period}")
 
-# Tablo Görünümü
+# Tablo Görünümü ve Formatlama
 view_df = display_df.copy()
 if "Kapasite (m3)" in view_df.columns: view_df["Kapasite (m3)"] = view_df["Kapasite (m3)"].apply(format_and_center)
 if "Kira Maliyeti (₺)" in view_df.columns: view_df["Kira Maliyeti (₺)"] = view_df["Kira Maliyeti (₺)"].apply(format_and_center)
@@ -160,15 +165,10 @@ edited_df_display = st.data_editor(view_df, use_container_width=True, num_rows="
 st.divider()
 c1, c2, c3 = st.columns([1,1,1])
 save_user = c1.text_input("👤 Kaydeden:", placeholder="Kadir Konca")
-save_name = c2.text_input("📝 Senaryo Adı:", placeholder="FY_2025_Final")
+save_name = c2.text_input("📝 Senaryo Adı:", placeholder="Plan_v1")
 
 if c3.button("💾 Arşive Yeni Kayıt Ekle", use_container_width=True):
-    existing_names = [e['isim'] for e in full_history]
-    if not save_user or not save_name:
-        st.error("⚠️ İsim ve senaryo adı eksik!")
-    elif save_name in existing_names:
-        st.error("⚠️ Bu isimde bir senaryo zaten var!")
-    else:
+    if save_user and save_name:
         # Sayısal temizlik
         save_df = edited_df_display.copy()
         save_df["Kapasite (m3)"] = save_df["Kapasite (m3)"].apply(unformat_dots)
