@@ -9,7 +9,7 @@ from datetime import datetime
 # 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
-# --- SOL ÜST ÖZEL TASARIM (KORUNDU) ---
+# --- SOL ÜST ÖZEL TASARIM ---
 st.sidebar.markdown(
     """
     <div style="background-color: #1e1e1e; padding: 25px 10px; border-radius: 15px; text-align: center; margin-bottom: 25px; border: 2px solid #FF6000;">
@@ -34,32 +34,37 @@ PERIYOT_LISTESI = AYLAR + ["--- Çeyrekler ---", "Q1", "Q2", "Q3", "Q4", "--- Ya
 CEYREKLER = {"Q1": ["Ocak", "Şubat", "Mart"], "Q2": ["Nisan", "Mayıs", "Haziran"], "Q3": ["Temmuz", "Ağustos", "Eylül"], "Q4": ["Ekim", "Kasım", "Aralık"]}
 ALTI_AYLIK = {"H1": ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran"], "H2": ["Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]}
 
-# --- GERÇEK AY BAZLI VERİTABANI BAŞLATMA ---
+# --- GÖRSELLERDEN ALINAN GERÇEK 2025 VERİTABANI ---
 def initialize_database():
     data_2025 = []
-    # Sayfa1 Verileri: Ocak-Haziran (Dönem 1), Temmuz-Aralık (Dönem 2)
-    raw_info = {
-        "Gebze Depo": {"d1": 10072228, "d2": 12590285, "kap": 19301, "fix": 185.19},
-        "İzmir Torbalı Depo": {"d1": 3353400, "d2": 4191750, "kap": 13824, "fix": 31.15},
-        "İzmir Pancar Depo": {"d1": 2296381, "d2": 2870476, "kap": 3365, "fix": 277.30},
-        "Düzce Depo": {"d1": 2697600, "d2": 3372000, "kap": 15343, "fix": 73.51},
-        "Bilecik Depo": {"d1": 3310998, "d2": 4138748, "kap": 22000, "fix": 55.12},
-        "Adana Depo": {"d1": 0, "d2": 0, "kap": 2133, "fix": 73.18},
-        "İzmir Pınarbaşı Depo": {"d1": 737965, "d2": 922456, "kap": 4694, "fix": 48.03},
-        "Ankara Depo": {"d1": 0, "d2": 0, "kap": 4038, "fix": 68.30},
-        "Kapaklı Depo": {"d1": 11826000, "d2": 14782500, "kap": 32000, "fix": 36.32},
-        "Tuzla Depo": {"d1": 3638250, "d2": 4547813, "kap": 15343, "fix": 10.00}
+    # Görsellerdeki tam eşleşmeler:
+    # Depo Adı: [Ocak-Haziran Kirası, Temmuz-Aralık Kirası, Kapasite m3, Fix Cost]
+    raw_data = {
+        "Bilecik Depo": [3310998, 4138748, 22000, 55.12],
+        "Gebze Depo": [10072228, 12590285, 19301, 185.19],
+        "İzmir Torbalı Depo": [3353400, 4191750, 13824, 31.15],
+        "İzmir Pancar Depo": [2296381, 2870476, 3365, 277.30],
+        "Düzce Depo": [2697600, 3372000, 15343, 73.51],
+        "Adana Depo": [0, 0, 2133, 73.18],
+        "İzmir Pınarbaşı Depo": [737965, 922456, 4694, 48.03],
+        "Ankara Depo": [0, 0, 4038, 68.30]
     }
-    for depo, v in raw_info.items():
+    
+    for depo, vals in raw_data.items():
+        k1, k2, kap, fix = vals
         for i, ay in enumerate(AYLAR):
-            kira = v["d1"] if i < 6 else v["d2"]
-            data_2025.append({"Yıl": 2025, "Ay": ay, "Depo Adı": depo, "Kapasite (m3)": v["kap"], "Kira Maliyeti (₺)": kira, "Fix Cost (m3 Başı)": v["fix"]})
+            kira = k1 if i < 6 else k2 # Haziran ve öncesi k1, Temmuz ve sonrası k2
+            data_2025.append({
+                "Yıl": 2025, "Ay": ay, "Depo Adı": depo, 
+                "Kapasite (m3)": kap, "Kira Maliyeti (₺)": kira, "Fix Cost (m3 Başı)": fix
+            })
     pd.DataFrame(data_2025).to_csv(DB_FILE, index=False)
 
+# Veritabanı yoksa veya sıfırlanmak istenirse
 if not os.path.exists(DB_FILE):
     initialize_database()
 
-# --- FONKSİYONLAR ---
+# --- YARDIMCI FONKSİYONLAR ---
 def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
@@ -78,16 +83,11 @@ def unformat_dots(val):
     if isinstance(val, str): return float(val.strip().replace(".", "").replace(",", ""))
     return val
 
-def to_excel(df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False)
-    return output.getvalue()
-
 # --- VERİLERİ YÜKLE ---
 if "table_version" not in st.session_state: st.session_state["table_version"] = 0
 full_history = load_history()
 
-# --- SOL PANEL (ARŞİV) ---
+# --- SOL PANEL (ARŞİV & YÜKLEME) ---
 st.sidebar.header("📜 Merkezi Senaryo Arşivi")
 if full_history:
     for idx, entry in enumerate(full_history):
@@ -98,13 +98,14 @@ if full_history:
                 st.session_state["table_version"] += 1; st.rerun()
             if c2.button("🗑️ Sil", key=f"h_del_{idx}"):
                 full_history.pop(idx); save_history_all(full_history); st.rerun()
-else: st.sidebar.info("Arşiv boş.")
+else: st.sidebar.info("Arşiv henüz boş.")
 
 st.sidebar.markdown("---")
-st.sidebar.header("📤 Yeni Veri Yükle")
-up_user = st.sidebar.text_input("Ad Soyad:", key="up_user")
-up_label = st.sidebar.text_input("Senaryo Adı:", key="up_label")
-uploaded_file = st.sidebar.file_uploader("Excel/CSV", type=["csv", "xlsx"])
+st.sidebar.header("📤 Dışarıdan Veri Yükle")
+up_user = st.sidebar.text_input("Ad Soyad:", key="up_user", placeholder="Örn: Kadir Konca")
+up_label = st.sidebar.text_input("Senaryo Adı:", key="up_label", placeholder="Örn: 2025_Plan_v1")
+uploaded_file = st.sidebar.file_uploader("Excel veya CSV Seçin", type=["csv", "xlsx"])
+
 if uploaded_file and up_user and up_label:
     if st.sidebar.button("✅ Arşive ve Tabloya İşle"):
         up_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
@@ -117,7 +118,7 @@ if uploaded_file and up_user and up_label:
 st.title("🚀 Hepsiburada Stratejik Planlama Merkezi")
 main_df = pd.read_csv(DB_FILE)
 
-# --- FİLTRELEME ---
+# --- FİLTRELEME VE GÖRÜNÜM ---
 st.markdown("### 🔍 Görünüm ve Sıralama Ayarları")
 f_col1, f_col2, f_col3 = st.columns(3)
 with f_col1: selected_year = st.selectbox("📅 Yıl Seçin:", options=[2025, 2026], index=0)
@@ -131,15 +132,16 @@ elif selected_period in ALTI_AYLIK: filter_months = ALTI_AYLIK[selected_period]
 elif selected_period == "FY (Full Year)": filter_months = AYLAR
 else: filter_months = ["Ocak"]
 
-# --- DİNAMİK FİLTRE UYGULAMA ---
+# Seçilen yıla ve periyoda göre filtrele
 filtered_df = main_df[(main_df["Yıl"] == selected_year) & (main_df["Ay"].isin(filter_months))]
 
+# Konsolidasyon (Çeyrek, 6 Aylık veya Tüm Yıl seçilirse)
 if len(filter_months) > 1:
     display_df = filtered_df.groupby("Depo Adı").agg({"Kapasite (m3)": "sum", "Kira Maliyeti (₺)": "sum", "Fix Cost (m3 Başı)": "mean"}).reset_index()
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
 
-# --- SIRALAMA ---
+# Sıralama Uygulama
 sort_map = {"Depo Adı (A-Z)": ("Depo Adı", True), "Depo Adı (Z-A)": ("Depo Adı", False), "Kapasite (Yüksek->Düşük)": ("Kapasite (m3)", False), "Kapasite (Düşük->Yüksek)": ("Kapasite (m3)", True), "Kira Maliyeti (Yüksek->Düşük)": ("Kira Maliyeti (₺)", False), "Kira Maliyeti (Düşük->Yüksek)": ("Kira Maliyeti (₺)", True), "Fix Cost (Yüksek->Düşük)": ("Fix Cost (m3 Başı)", False), "Fix Cost (Düşük->Yüksek)": ("Fix Cost (m3 Başı)", True)}
 col, asc = sort_map[sort_option]
 display_df = display_df.sort_values(by=col, ascending=asc)
@@ -152,28 +154,30 @@ view_df["Kira Maliyeti (₺)"] = view_df["Kira Maliyeti (₺)"].apply(format_and
 column_config = {"Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium"), "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)"), "Kira Maliyeti (₺)": st.column_config.TextColumn("Kira Maliyeti (₺)"), "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f")}
 edited_df_display = st.data_editor(view_df, use_container_width=True, num_rows="dynamic", column_config=column_config, key=f"ed_v{st.session_state['table_version']}")
 
-# --- KAYDETME ---
+# --- KAYDETME (MANUEL ARŞİVLEME) ---
 st.divider()
+st.markdown("### 💾 Bu Çalışmayı Arşivle")
 c1, c2, c3 = st.columns([1,1,1])
-save_user = c1.text_input("👤 Kaydeden:", placeholder="Kadir Konca")
-save_name = c2.text_input("📝 Senaryo Adı:", placeholder="Plan_v1")
+save_user = c1.text_input("👤 Kaydeden Kişi:", placeholder="Kadir Konca")
+save_name = c2.text_input("📝 Senaryo/Dosya Adı:", placeholder="Örn: Temmuz_Revize_v2")
 if c3.button("💾 Arşive Yeni Kayıt Ekle", use_container_width=True):
     if save_user and save_name:
         s_df = edited_df_display.copy()
         s_df["Kapasite (m3)"] = s_df["Kapasite (m3)"].apply(unformat_dots)
         s_df["Kira Maliyeti (₺)"] = s_df["Kira Maliyeti (₺)"].apply(unformat_dots)
         new_entry = {"tarih": datetime.now().strftime("%d.%m.%Y %H:%M"), "isim": save_name, "yukleyen": save_user, "veri": s_df.to_dict(orient="list")}
-        full_history.insert(0, new_entry); save_history_all(full_history); st.success("Arşivlendi!"); st.rerun()
+        full_history.insert(0, new_entry); save_history_all(full_history); st.success("Başarıyla arşivlendi!"); st.rerun()
+    else: st.error("Lütfen isim ve senaryo adı girin!")
 
 # --- OPTİMİZASYON ---
 st.divider()
-target_demand = st.number_input("🎯 Hedeflenen Sevkiyat Talebi (m3)", value=35000)
+target_demand = st.number_input("🎯 Hedeflenen Toplam Sevkiyat Talebi (m3)", value=35000)
 if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
     try:
         opt_df = edited_df_display.copy()
         opt_df["Kapasite (m3)"] = opt_df["Kapasite (m3)"].apply(unformat_dots)
         opt_df["Kira Maliyeti (₺)"] = opt_df["Kira Maliyeti (₺)"].apply(unformat_dots)
-        prob = pulp.LpProblem("MinCost", pulp.LpMinimize)
+        prob = pulp.LpProblem("Warehouse_Min", pulp.LpMinimize)
         usage = pulp.LpVariable.dicts("m3", opt_df["Depo Adı"], lowBound=0)
         prob += pulp.lpSum([(usage[d] * float(opt_df.loc[opt_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + float(opt_df.loc[opt_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in opt_df["Depo Adı"]])
         prob += pulp.lpSum([usage[d] for d in opt_df["Depo Adı"]]) == target_demand
