@@ -32,7 +32,7 @@ PERIYOT_LISTESI = AYLAR + ["--- Çeyrekler ---", "Q1", "Q2", "Q3", "Q4", "--- Ya
 CEYREKLER = {"Q1": ["Ocak", "Şubat", "Mart"], "Q2": ["Nisan", "Mayıs", "Haziran"], "Q3": ["Temmuz", "Ağustos", "Eylül"], "Q4": ["Ekim", "Kasım", "Aralık"]}
 ALTI_AYLIK = {"H1": ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran"], "H2": ["Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]}
 
-# --- VERİTABANI BAŞLATMA ---
+# --- VERİTABANI BAŞLATMA (ORİJİNAL RAKAMLAR) ---
 def initialize_database():
     data_2025 = []
     master_dict = {
@@ -99,6 +99,14 @@ if uploaded_file and up_user and up_label:
         new_entry = {"tarih": datetime.now().strftime("%d.%m.%Y %H:%M"), "isim": up_label, "yukleyen": up_user, "veri": up_df.to_dict(orient="list")}
         full_history.insert(0, new_entry); save_history_all(full_history)
         st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1; st.rerun()
+
+# --- YENİ EKLENEN SIFIRLA BUTONU ---
+st.sidebar.markdown("---")
+if st.sidebar.button("🔄 Tabloyu Orijinal Verilere Döndür", use_container_width=True):
+    initialize_database()
+    st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1
+    st.success("Tablo sıfırlandı!")
+    st.rerun()
 
 # --- ANA EKRAN ---
 st.title("🚀 Hepsiburada Depo Optimizasyonu")
