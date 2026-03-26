@@ -9,6 +9,10 @@ from datetime import datetime
 # 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
+# Session State Başlatma (Sıfırlama için kritik)
+if "table_version" not in st.session_state:
+    st.session_state["table_version"] = 0
+
 # --- SOL ÜST ÖZEL TASARIM ---
 st.sidebar.markdown(
     """
@@ -82,7 +86,7 @@ if full_history:
             c1, c2 = st.columns(2)
             if c1.button("📤 Yükle", key=f"h_load_{idx}"):
                 pd.DataFrame(entry['veri']).to_csv(DB_FILE, index=False)
-                st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1
+                st.session_state["table_version"] += 1
                 st.rerun()
             if c2.button("🗑️ Sil", key=f"h_del_{idx}"):
                 full_history.pop(idx); save_history_all(full_history); st.rerun()
@@ -98,7 +102,7 @@ if uploaded_file and up_user and up_label:
         up_df.to_csv(DB_FILE, index=False)
         new_entry = {"tarih": datetime.now().strftime("%d.%m.%Y %H:%M"), "isim": up_label, "yukleyen": up_user, "veri": up_df.to_dict(orient="list")}
         full_history.insert(0, new_entry); save_history_all(full_history)
-        st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1; st.rerun()
+        st.session_state["table_version"] += 1; st.rerun()
 
 # --- ANA EKRAN ---
 st.title("🚀 Hepsiburada Stratejik Planlama Merkezi")
@@ -129,13 +133,25 @@ sort_map = {"Depo Adı (A-Z)": ("Depo Adı", True), "Depo Adı (Z-A)": ("Depo Ad
 col, asc = sort_map[sort_option]
 display_df = display_df.sort_values(by=col, ascending=asc)
 
-st.subheader(f"📊 {selected_year} - {selected_period}")
+# --- TABLO BAŞLIĞI VE SIFIRLAMA BUTONU ---
+st.divider()
+t_col1, t_col2 = st.columns([4, 1])
+with t_col1:
+    st.subheader(f"📊 {selected_year} - {selected_period}")
+with t_col2:
+    if st.button("🔄 Verileri Sıfırla", help="Manuel yaptığınız tüm değişiklikleri siler ve orijinal rakamlara döner", use_container_width=True):
+        initialize_database()
+        st.session_state["table_version"] += 1
+        st.rerun()
+
 view_df = display_df.copy()
 view_df["Kapasite (m3)"] = view_df["Kapasite (m3)"].apply(format_num)
 view_df["Kira Maliyeti (₺)"] = view_df["Kira Maliyeti (₺)"].apply(format_num)
 
 column_config = {"Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium"), "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)"), "Kira Maliyeti (₺)": st.column_config.TextColumn("Kira Maliyeti (₺)"), "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f")}
-edited_df_display = st.data_editor(view_df, use_container_width=True, num_rows="dynamic", column_config=column_config, key=f"ed_{selected_period}")
+
+# table_version eklendi, böylece reset butonuna basınca UI zorla yenilenir
+edited_df_display = st.data_editor(view_df, use_container_width=True, num_rows="dynamic", column_config=column_config, key=f"ed_{selected_period}_{st.session_state['table_version']}")
 
 # --- OPTİMİZASYON ---
 st.divider()
