@@ -34,7 +34,7 @@ PERIYOT_LISTESI = AYLAR + ["--- Çeyrekler ---", "Q1", "Q2", "Q3", "Q4", "--- Ya
 CEYREKLER = {"Q1": ["Ocak", "Şubat", "Mart"], "Q2": ["Nisan", "Mayıs", "Haziran"], "Q3": ["Temmuz", "Ağustos", "Eylül"], "Q4": ["Ekim", "Kasım", "Aralık"]}
 ALTI_AYLIK = {"H1": ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran"], "H2": ["Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]}
 
-# --- SENİN VERDİĞİN KESİN VERİLERLE DATABASE BAŞLATMA ---
+# --- SENİN VERDİĞİN KESİN VE DÜZELTİLMİŞ VERİLERLE DATABASE BAŞLATMA ---
 def initialize_database():
     data_2025 = []
     
@@ -81,7 +81,9 @@ def initialize_database():
             "Cap": 0
         },
         "Adana Depo": {
+            # Adana Kira: Ağustos'ta sıçrama var, Ekim-Aralık arası 0.
             "Kira": [153150, 193714, 193408, 193714, 171345, 190383, 190383, 498993, 595686, 0, 0, 0],
+            # Adana Fix: Ağustos verisi düzeltildi, Kasım/Aralık son veriler işlendi.
             "Fix": [283.29, 123.99, 70.35, 229.62, 211.84, 155.93, 167.98, 0.0, 9.14, 36.18, 1.60, 3.01],
             "Cap": 2133
         }
@@ -97,8 +99,8 @@ def initialize_database():
             })
     pd.DataFrame(data_2025).to_csv(DB_FILE, index=False)
 
-# İlk kurulum veya manuel sıfırlama
-if not os.path.exists(DB_FILE) or st.sidebar.button("🚨 TÜM VERİLERİ SIFIRLA VE YÜKLE"):
+# Manuel güncelleme butonu ile tetiklenebilir
+if not os.path.exists(DB_FILE) or st.sidebar.button("🚨 VERİLERİ SIFIRLA VE YÜKLE"):
     initialize_database()
     st.rerun()
 
@@ -156,9 +158,8 @@ else: filter_months = ["Ocak"]
 
 filtered_df = main_df[(main_df["Yıl"] == selected_year) & (main_df["Ay"].isin(filter_months))]
 
-# Periyodik Konsolidasyon (Filtreye göre verilerin toplanması)
+# Periyodik Konsolidasyon
 if len(filter_months) > 1:
-    # Birden fazla ay seçiliyse (FY, Q1 vb.) Kapasite ve Kira toplamları alınır, Fix Cost ortalaması alınır.
     display_df = filtered_df.groupby("Depo Adı").agg({"Kapasite (m3)": "sum", "Kira Maliyeti (₺)": "sum", "Fix Cost (m3 Başı)": "mean"}).reset_index()
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
@@ -181,14 +182,14 @@ st.divider()
 st.markdown("### 💾 Bu Senaryoyu Kaydet")
 c1, c2, c3 = st.columns([1,1,1])
 s_user = c1.text_input("👤 Kaydeden Adı:", placeholder="Kadir Konca")
-s_name = c2.text_input("📝 Senaryo İsmi:", placeholder="Örn: 2025_Q3_Optimized")
-if c3.button("💾 Arşive Ekle", use_container_width=True):
+s_name = c2.text_input("📝 Senaryo İsmi:", placeholder="Plan_v1")
+if c3.button("💾 Arşive Ekle", key="save_button", use_container_width=True):
     if s_user and s_name:
         sdf = edited_df_display.copy()
         sdf["Kapasite (m3)"] = sdf["Kapasite (m3)"].apply(unformat_num)
         sdf["Kira Maliyeti (₺)"] = sdf["Kira Maliyeti (₺)"].apply(unformat_num)
         new_entry = {"tarih": datetime.now().strftime("%d.%m.%Y %H:%M"), "isim": s_name, "yukleyen": s_user, "veri": sdf.to_dict(orient="list")}
-        full_history.insert(0, new_entry); save_history_all(full_history); st.success("Senaryo başarıyla arşivlendi!"); st.rerun()
+        full_history.insert(0, new_entry); save_history_all(full_history); st.success("Senaryo arşivlendi!"); st.rerun()
 
 # --- OPTİMİZASYON ---
 st.divider()
@@ -198,27 +199,17 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
         opt_df = edited_df_display.copy()
         opt_df["Kapasite (m3)"] = opt_df["Kapasite (m3)"].apply(unformat_num)
         opt_df["Kira Maliyeti (₺)"] = opt_df["Kira Maliyeti (₺)"].apply(unformat_num)
-        
-        # Sadece kapasitesi 0 olmayan depoları optimizasyona al (Tuzla ve BF Ek Depo elenir)
         opt_df_valid = opt_df[opt_df["Kapasite (m3)"] > 0].copy()
         
         prob = pulp.LpProblem("Warehouse_Min", pulp.LpMinimize)
         usage = pulp.LpVariable.dicts("m3", opt_df_valid["Depo Adı"], lowBound=0)
-        
         prob += pulp.lpSum([(usage[d] * float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in opt_df_valid["Depo Adı"]])
         prob += pulp.lpSum([usage[d] for d in opt_df_valid["Depo Adı"]]) == target_demand
-        
-        for d in opt_df_valid["Depo Adı"]: 
-            prob += usage[d] <= float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kapasite (m3)"].values[0])
-        
+        for d in opt_df_valid["Depo Adı"]: prob += usage[d] <= float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kapasite (m3)"].values[0])
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
-        
         if pulp.LpStatus[prob.status] == 'Optimal':
-            cost_total = pulp.value(prob.objective)
-            st.markdown(f"### 💰 Hesaplanan Toplam Maliyet: **{'{:,.0f}'.format(cost_total).replace(',', '.')} ₺**")
+            st.markdown(f"### 💰 Hesaplanan Toplam Maliyet: **{'{:,.0f}'.format(pulp.value(prob.objective)).replace(',', '.')} ₺**")
             res_df = pd.DataFrame([{"Depo": d, "Atanan (m3)": round(usage[d].varValue, 2)} for d in opt_df_valid["Depo Adı"]])
             st.dataframe(res_df.style.format({"Atanan (m3)": "{:,.2f}"}), use_container_width=True)
-        else:
-            st.error("Hedeflenen talebe bu kapasitelerle ulaşılamıyor. Lütfen hedefi düşürün.")
-    except Exception as e: 
-        st.error(f"Optimizasyon hatası: {e}")
+        else: st.error("Kapasite yetersiz.")
+    except Exception as e: st.error(f"Hata: {e}")
