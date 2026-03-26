@@ -9,16 +9,17 @@ from datetime import datetime
 # 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
-# --- SOL ÜST LOGO VE ÖZEL TASARIM ---
-# Hepsiburada Turuncusu: #FF6000
+# --- SOL ÜST LOGO VE ÖZEL TASARIM (GARANTİLİ VERSİYON) ---
 st.sidebar.markdown(
     """
-    <div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px; border: 1px solid #FF6000;">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Hepsiburada_logo_official.svg/1024px-Hepsiburada_logo_official.svg.png" width="150" style="margin-bottom: 10px;">
-        <h1 style="font-family: 'Arial Black', Gadget, sans-serif; color: #FF6000; font-size: 22px; margin: 0; padding: 0;">
+    <div style="background-color: #1e1e1e; padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 25px; border: 2px solid #FF6000;">
+        <div style="background-color: #FF6000; color: white; font-weight: bold; border-radius: 50%; width: 50px; height: 50px; line-height: 50px; margin: 0 auto 10px auto; font-size: 24px; font-family: sans-serif; box-shadow: 0px 4px 10px rgba(255, 96, 0, 0.3);">
+            HB
+        </div>
+        <h1 style="font-family: 'Arial Black', Gadget, sans-serif; color: #FF6000; font-size: 22px; margin: 0; padding: 0; letter-spacing: 1px;">
             HEPSİBURADA
         </h1>
-        <h2 style="font-family: 'Verdana', Geneva, sans-serif; color: #FFFFFF; font-size: 14px; font-weight: 100; margin-top: 5px; letter-spacing: 1px;">
+        <h2 style="font-family: 'Verdana', Geneva, sans-serif; color: #FFFFFF; font-size: 13px; font-weight: 100; margin-top: 5px; opacity: 0.8;">
             Warehouse Optimization
         </h2>
     </div>
@@ -94,7 +95,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("📤 Yeni Veri Yükle")
 up_user = st.sidebar.text_input("Ad Soyad:", key="up_user")
 up_label = st.sidebar.text_input("Senaryo Adı:", key="up_label")
-uploaded_file = st.sidebar.file_uploader("Excel/CSV", type=["csv", "xlsx"])
+uploaded_file = st.sidebar.file_uploader("Excel/CSV Seçin", type=["csv", "xlsx"])
 
 if uploaded_file and up_user and up_label:
     if st.sidebar.button("✅ Arşive İşle"):
