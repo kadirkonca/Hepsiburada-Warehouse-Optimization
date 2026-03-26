@@ -158,7 +158,8 @@ if st.button("🚀 Optimizasyonu Başlat", use_container_width=True):
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
         
         if pulp.LpStatus[prob.status] == 'Optimal':
-            st.success(f"✅ Optimizasyon Başarılı! Toplam Maliyet: {'{:,.0f}'.format(pulp.value(prob.objective)).replace(',', '.')} ₺")
+            total_cost_val = pulp.value(prob.objective)
+            st.success(f"✅ Optimizasyon Başarılı! Toplam Maliyet: {'{:,.0f}'.format(total_cost_val).replace(',', '.')} ₺")
             
             res_data = []
             for d in opt_df_valid["Depo Adı"]:
@@ -166,15 +167,23 @@ if st.button("🚀 Optimizasyonu Başlat", use_container_width=True):
                 kapasite = float(opt_df_valid.loc[opt_df_valid["Depo Adı"] == d, "Kapasite (m3)"].values[0])
                 doluluk = (atanan / kapasite) * 100 if kapasite > 0 else 0
                 
-                # Durum Belirleme
                 if atanan <= 0.1: durum = "❌ Atıl (Kapat)"
                 elif doluluk >= 99.9: durum = "✅ Tam Dolu"
                 else: durum = "⚠️ Kısmi Kullanım"
                 
-                res_data.append({"Depo": d, "Atanan (m3)": round(atanan, 2), "Doluluk (%)": round(doluluk, 1), "Durum Tavsiyesi": durum})
+                # Formatlama: m3 rakam gibi (binlik nokta), Doluluk % olarak (tek hane)
+                m3_fmt = "{:,.0f}".format(atanan).replace(",", ".")
+                doluluk_fmt = f"% {doluluk:.1f}"
+                
+                res_data.append({
+                    "Depo": d, 
+                    "Atanan (m3)": m3_fmt, 
+                    "Doluluk (%)": doluluk_fmt, 
+                    "Durum Tavsiyesi": durum
+                })
             
             res_df = pd.DataFrame(res_data)
-            st.dataframe(res_df.style.applymap(lambda x: 'color: #FF6000; font-weight: bold' if "Atıl" in str(x) else ('color: #28a745' if "Tam" in str(x) else ''), subset=['Durum Tavsiyesi']), use_container_width=True)
+            st.dataframe(res_df, use_container_width=True)
         else: st.error("❌ Kapasite yetersiz! Bu yük bu depolara sığmıyor.")
     except Exception as e: st.error(f"Hata: {e}")
 
@@ -182,9 +191,9 @@ if st.button("🚀 Optimizasyonu Başlat", use_container_width=True):
 st.divider()
 st.markdown("### 💾 Sonucu Senaryo Olarak Kaydet")
 c1, c2, c3 = st.columns([1,1,1])
-s_user = c1.text_input("👤 Kaydeden:", placeholder="Kadir Konca")
-s_name = c2.text_input("📝 Senaryo Adı:", placeholder="Optimizasyon_Sonuc_v1")
-if c3.button("💾 Arşive Ekle", use_container_width=True):
+s_user = c1.text_input("👤 Kaydeden Adı:", placeholder="Kadir Konca")
+s_name = c2.text_input("📝 Senaryo İsmi:", placeholder="Plan_v1")
+if c3.button("💾 Arşive Ekle", key="save_button", use_container_width=True):
     if s_user and s_name:
         sdf = edited_df_display.copy()
         sdf["Kapasite (m3)"] = sdf["Kapasite (m3)"].apply(unformat_num)
