@@ -101,7 +101,7 @@ if uploaded_file and up_user and up_label:
         st.session_state["table_version"] = st.session_state.get("table_version", 0) + 1; st.rerun()
 
 # --- ANA EKRAN ---
-st.title("🚀 Hepsiburada Stratejik Planlama Merkezi")
+st.title("🚀 Hepsiburada Depo Optimizasyonu")
 main_df = pd.read_csv(DB_FILE)
 
 st.markdown("### 🔍 Görünüm ve Sıralama Ayarları")
