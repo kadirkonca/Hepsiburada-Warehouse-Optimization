@@ -53,7 +53,7 @@ def initialize_database():
 
 if not os.path.exists(DB_FILE): initialize_database()
 
-# --- FONKSİYONLAR ---
+# --- YARDIMCI FONKSİYONLAR ---
 def load_history():
     if os.path.exists(HISTORY_FILE):
         try:
@@ -65,12 +65,19 @@ def save_history_all(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f: json.dump(history, f, ensure_ascii=False, indent=4)
 
 def format_num(val):
-    try: return f"      {'{:,.0f}'.format(float(val)).replace(',', '.')}      "
+    try: return f"{'{:,.0f}'.format(float(val)).replace(',', '.')}"
     except: return val
 
 def unformat_num(val):
     if isinstance(val, str): return float(val.strip().replace(".", "").replace(",", ""))
     return val
+
+# EXCEL İNDİRME FONKSİYONU
+def to_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Scenario')
+    return output.getvalue()
 
 full_history = load_history()
 
@@ -124,7 +131,6 @@ if len(filter_months) > 1:
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
 
-# Sıralama
 sort_map = {"Depo Adı (A-Z)": ("Depo Adı", True), "Depo Adı (Z-A)": ("Depo Adı", False), "Kapasite (Yüksek->Düşük)": ("Kapasite (m3)", False), "Kapasite (Düşük->Yüksek)": ("Kapasite (m3)", True), "Kira Maliyeti (Yüksek->Düşük)": ("Kira Maliyeti (₺)", False), "Kira Maliyeti (Düşük->Yüksek)": ("Kira Maliyeti (₺)", True), "Fix Cost (Yüksek->Düşük)": ("Fix Cost (m3 Başı)", False), "Fix Cost (Düşük->Yüksek)": ("Fix Cost (m3 Başı)", True)}
 col, asc = sort_map[sort_option]
 display_df = display_df.sort_values(by=col, ascending=asc)
@@ -134,14 +140,28 @@ view_df = display_df.copy()
 view_df["Kapasite (m3)"] = view_df["Kapasite (m3)"].apply(format_num)
 view_df["Kira Maliyeti (₺)"] = view_df["Kira Maliyeti (₺)"].apply(format_num)
 
-column_config = {"Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium"), "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)"), "Kira Maliyeti (₺)": st.column_config.TextColumn("Kira Maliyeti (₺)"), "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f")}
+column_config = {
+    "Depo Adı": st.column_config.TextColumn("Depo Adı", width="medium"),
+    "Kapasite (m3)": st.column_config.TextColumn("Kapasite (m3)"),
+    "Kira Maliyeti (₺)": st.column_config.TextColumn("Kira Maliyeti (₺)"),
+    "Fix Cost (m3 Başı)": st.column_config.NumberColumn("Fix Cost (m3 Başı)", format="%.2f")
+}
+
 edited_df_display = st.data_editor(view_df, use_container_width=True, num_rows="dynamic", column_config=column_config, key=f"ed_{selected_period}")
+
+# --- ÖZEL EXCEL İNDİRME BUTONU (YENİ) ---
+st.download_button(
+    label="📥 Mevcut Tabloyu Excel Olarak İndir",
+    data=to_excel(display_df),
+    file_name=f"HB_Scenario_{selected_year}_{selected_period}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True
+)
 
 # --- OPTİMİZASYON ---
 st.divider()
 st.markdown("### 🎯 Akıllı Operasyon Optimizasyonu")
 
-# Maksimum Kapasiteyi Hesapla (Dinamik)
 temp_opt_df = edited_df_display.copy()
 temp_opt_df["Kapasite (m3)"] = temp_opt_df["Kapasite (m3)"].apply(unformat_num)
 max_cap_val = temp_opt_df["Kapasite (m3)"].sum()
@@ -154,7 +174,7 @@ with c_opt2:
 
 if st.button("🚀 Optimizasyonu Başlat", use_container_width=True):
     if target_demand > max_cap_val:
-        st.error(f"❌ Kapasite yetersiz! Girdiğiniz {target_demand} m3 yük, mevcut {'{:,.0f}'.format(max_cap_val).replace(',', '.')} m3 kapasiteye sığmıyor.")
+        st.error(f"❌ Kapasite yetersiz!")
     else:
         try:
             opt_df = edited_df_display.copy()
@@ -186,13 +206,25 @@ if st.button("🚀 Optimizasyonu Başlat", use_container_width=True):
                     elif doluluk >= 99.9: durum = "✅ Tam Dolu"
                     else: durum = "⚠️ Kısmi Kullanım"
                     
-                    m3_fmt = "{:,.0f}".format(atanan).replace(",", ".")
-                    doluluk_fmt = f"% {doluluk:.1f}"
-                    
-                    res_data.append({"Depo": d, "Atanan (m3)": m3_fmt, "Doluluk (%)": doluluk_fmt, "Durum Tavsiyesi": durum})
+                    res_data.append({
+                        "Depo": d, 
+                        "Atanan (m3)": "{:,.0f}".format(atanan).replace(",", "."), 
+                        "Doluluk (%)": f"% {doluluk:.1f}", 
+                        "Durum Tavsiyesi": durum
+                    })
                 
-                st.dataframe(pd.DataFrame(res_data), use_container_width=True)
-            else: st.error("❌ Matematiksel bir hata oluştu.")
+                opt_res_df = pd.DataFrame(res_data)
+                st.dataframe(opt_res_df, use_container_width=True)
+                
+                # Optimizasyon Sonucu İndirme Butonu
+                st.download_button(
+                    label="📥 Optimizasyon Sonucunu Excel Olarak İndir",
+                    data=to_excel(opt_res_df),
+                    file_name=f"HB_Optimization_Result_{selected_period}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            else: st.error("❌ Hata!")
         except Exception as e: st.error(f"Hata: {e}")
 
 # --- KAYDETME ---
