@@ -9,6 +9,21 @@ from datetime import datetime
 # 1. SAYFA AYARLARI
 st.set_page_config(page_title="Hepsiburada Senaryo Merkezi", layout="wide")
 
+# --- SOL ÜST LOGO VE BAŞLIK EKLEME ---
+# Hepsiburada logosu ve alt başlığı sidebar'ın en tepesine yerleştiriyoruz
+st.sidebar.markdown(
+    """
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="https://hepsiburada.github.io/logo/hb-logo.png" width="180">
+        <h2 style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #FF6000; margin-top: 10px;">
+            Warehouse Optimization
+        </h2>
+    </div>
+    <hr style="border: 1px solid #FF6000;">
+    """,
+    unsafe_allow_html=True
+)
+
 # DOSYA YOLLARI
 DB_FILE = "shared_warehouse_data.csv"
 HISTORY_FILE = "all_scenarios_history.json" 
@@ -112,7 +127,6 @@ with f_col1:
 with f_col2:
     selected_period = st.selectbox("⏱️ Periyot Seçin:", options=PERIYOT_LISTESI)
 with f_col3:
-    # !!! FIX COST SEÇENEKLERİ EKLENDİ !!!
     sort_option = st.selectbox("🔃 Tabloyu Sırala:", 
                                options=[
                                    "Depo Adı (A-Z)", 
@@ -146,27 +160,19 @@ if len(filter_months) > 1:
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
 
-# !!! SIRALAMA MANTIĞI UYGULAMA (FIX COST DAHİL) !!!
-if sort_option == "Depo Adı (A-Z)":
-    display_df = display_df.sort_values(by="Depo Adı", ascending=True)
-elif sort_option == "Depo Adı (Z-A)":
-    display_df = display_df.sort_values(by="Depo Adı", ascending=False)
-elif sort_option == "Kapasite (Yüksek -> Düşük)":
-    display_df = display_df.sort_values(by="Kapasite (m3)", ascending=False)
-elif sort_option == "Kapasite (Düşük -> Yüksek)":
-    display_df = display_df.sort_values(by="Kapasite (m3)", ascending=True)
-elif sort_option == "Kira Maliyeti (Yüksek -> Düşük)":
-    display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=False)
-elif sort_option == "Kira Maliyeti (Düşük -> Yüksek)":
-    display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=True)
-elif sort_option == "Fix Cost (Yüksek -> Düşük)":
-    display_df = display_df.sort_values(by="Fix Cost (m3 Başı)", ascending=False)
-elif sort_option == "Fix Cost (Düşük -> Yüksek)":
-    display_df = display_df.sort_values(by="Fix Cost (m3 Başı)", ascending=True)
+# Sıralama Uygulama
+if sort_option == "Depo Adı (A-Z)": display_df = display_df.sort_values(by="Depo Adı", ascending=True)
+elif sort_option == "Depo Adı (Z-A)": display_df = display_df.sort_values(by="Depo Adı", ascending=False)
+elif sort_option == "Kapasite (Yüksek -> Düşük)": display_df = display_df.sort_values(by="Kapasite (m3)", ascending=False)
+elif sort_option == "Kapasite (Düşük -> Yüksek)": display_df = display_df.sort_values(by="Kapasite (m3)", ascending=True)
+elif sort_option == "Kira Maliyeti (Yüksek -> Düşük)": display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=False)
+elif sort_option == "Kira Maliyeti (Düşük -> Yüksek)": display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=True)
+elif sort_option == "Fix Cost (Yüksek -> Düşük)": display_df = display_df.sort_values(by="Fix Cost (m3 Başı)", ascending=False)
+elif sort_option == "Fix Cost (Düşük -> Yüksek)": display_df = display_df.sort_values(by="Fix Cost (m3 Başı)", ascending=True)
 
 st.subheader(f"📊 {selected_year} - {selected_period}")
 
-# Tablo Görünümü ve Formatlama
+# Tablo Görünümü
 view_df = display_df.copy()
 if "Kapasite (m3)" in view_df.columns: view_df["Kapasite (m3)"] = view_df["Kapasite (m3)"].apply(format_and_center)
 if "Kira Maliyeti (₺)" in view_df.columns: view_df["Kira Maliyeti (₺)"] = view_df["Kira Maliyeti (₺)"].apply(format_and_center)
@@ -191,7 +197,6 @@ if c3.button("💾 Arşive Yeni Kayıt Ekle", use_container_width=True):
         save_df = edited_df_display.copy()
         save_df["Kapasite (m3)"] = save_df["Kapasite (m3)"].apply(unformat_dots)
         save_df["Kira Maliyeti (₺)"] = save_df["Kira Maliyeti (₺)"].apply(unformat_dots)
-        
         new_entry = {"tarih": datetime.now().strftime("%d.%m.%Y %H:%M"), "isim": save_name, 
                      "yukleyen": save_user, "tip": "Manuel Kayıt", "veri": save_df.to_dict(orient="list")}
         full_history.insert(0, new_entry); save_history_all(full_history)
@@ -205,23 +210,17 @@ if st.button("🚀 Optimizasyonu Çalıştır", use_container_width=True):
         opt_df = edited_df_display.copy()
         opt_df["Kapasite (m3)"] = opt_df["Kapasite (m3)"].apply(unformat_dots)
         opt_df["Kira Maliyeti (₺)"] = opt_df["Kira Maliyeti (₺)"].apply(unformat_dots)
-        
         prob = pulp.LpProblem("Warehouse_Min", pulp.LpMinimize)
         depolar = opt_df["Depo Adı"].tolist()
         usage = pulp.LpVariable.dicts("m3", depolar, lowBound=0)
-        
         prob += pulp.lpSum([(usage[d] * float(opt_df.loc[opt_df["Depo Adı"] == d, "Fix Cost (m3 Başı)"].values[0])) + 
                             float(opt_df.loc[opt_df["Depo Adı"] == d, "Kira Maliyeti (₺)"].values[0]) for d in depolar])
         prob += pulp.lpSum([usage[d] for d in depolar]) == target_demand
         for d in depolar:
             prob += usage[d] <= float(opt_df.loc[opt_df["Depo Adı"] == d, "Kapasite (m3)"].values[0])
-            
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
         if pulp.LpStatus[prob.status] == 'Optimal':
             st.markdown(f"### 💰 Toplam Maliyet: **{'{:,.0f}'.format(pulp.value(prob.objective)).replace(',', '.')} ₺**")
             res_df = pd.DataFrame([{"Depo": d, "Atanan (m3)": round(usage[d].varValue, 2)} for d in depolar])
             st.dataframe(res_df.style.format({"Atanan (m3)": "{:,.2f}"}), use_container_width=True)
     except Exception as e: st.error(f"Hata: {e}")
-
-st.sidebar.markdown("---")
-st.sidebar.caption("v4.4 - Fix Cost Sıralama Güncellemesi")
