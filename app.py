@@ -104,7 +104,7 @@ else:
     })
 
 # --- FİLTRELEME VE SIRALAMA AYARLARI ---
-st.markdown("### 🔍 Görünüm Ayarları")
+st.markdown("### 🔍 Görünüm ve Sıralama Ayarları")
 f_col1, f_col2, f_col3 = st.columns(3)
 
 with f_col1:
@@ -112,9 +112,16 @@ with f_col1:
 with f_col2:
     selected_period = st.selectbox("⏱️ Periyot Seçin:", options=PERIYOT_LISTESI)
 with f_col3:
-    # !!! YENİ: SIRALAMA SEÇENEĞİ !!!
+    # !!! GÜNCELLENEN SIRALAMA SEÇENEKLERİ !!!
     sort_option = st.selectbox("🔃 Tabloyu Sırala:", 
-                               options=["Depo Adı (A-Z)", "Kapasite (Yüksek->Düşük)", "Maliyet (Düşük->Yüksek)"])
+                               options=[
+                                   "Depo Adı (A-Z)", 
+                                   "Depo Adı (Z-A)", 
+                                   "Kapasite (Yüksek -> Düşük)", 
+                                   "Kapasite (Düşük -> Yüksek)", 
+                                   "Maliyet (Yüksek -> Düşük)",
+                                   "Maliyet (Düşük -> Yüksek)"
+                               ])
 
 # Filtre Mantığı
 filter_months = []
@@ -137,12 +144,18 @@ if len(filter_months) > 1:
 else:
     display_df = filtered_df.drop(columns=["Yıl", "Ay"]) if "Yıl" in filtered_df.columns else filtered_df
 
-# !!! YENİ: SIRALAMA UYGULAMA !!!
+# !!! SIRALAMA MANTIĞI UYGULAMA !!!
 if sort_option == "Depo Adı (A-Z)":
     display_df = display_df.sort_values(by="Depo Adı", ascending=True)
-elif sort_option == "Kapasite (Yüksek->Düşük)":
+elif sort_option == "Depo Adı (Z-A)":
+    display_df = display_df.sort_values(by="Depo Adı", ascending=False)
+elif sort_option == "Kapasite (Yüksek -> Düşük)":
     display_df = display_df.sort_values(by="Kapasite (m3)", ascending=False)
-elif sort_option == "Maliyet (Düşük->Yüksek)":
+elif sort_option == "Kapasite (Düşük -> Yüksek)":
+    display_df = display_df.sort_values(by="Kapasite (m3)", ascending=True)
+elif sort_option == "Maliyet (Yüksek -> Düşük)":
+    display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=False)
+elif sort_option == "Maliyet (Düşük -> Yüksek)":
     display_df = display_df.sort_values(by="Kira Maliyeti (₺)", ascending=True)
 
 st.subheader(f"📊 {selected_year} - {selected_period}")
@@ -169,7 +182,6 @@ save_name = c2.text_input("📝 Senaryo Adı:", placeholder="Plan_v1")
 
 if c3.button("💾 Arşive Yeni Kayıt Ekle", use_container_width=True):
     if save_user and save_name:
-        # Sayısal temizlik
         save_df = edited_df_display.copy()
         save_df["Kapasite (m3)"] = save_df["Kapasite (m3)"].apply(unformat_dots)
         save_df["Kira Maliyeti (₺)"] = save_df["Kira Maliyeti (₺)"].apply(unformat_dots)
