@@ -35,40 +35,40 @@ PERIYOT_LISTESI = AYLAR + ["--- Çeyrekler ---", "Q1", "Q2", "Q3", "Q4", "--- Ya
 CEYREKLER = {"Q1": ["Ocak", "Şubat", "Mart"], "Q2": ["Nisan", "Mayıs", "Haziran"], "Q3": ["Temmuz", "Ağustos", "Eylül"], "Q4": ["Ekim", "Kasım", "Aralık"]}
 ALTI_AYLIK = {"H1": ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran"], "H2": ["Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]}
 
-# --- 2025 DATABASE HAZIRLAMA (Excel'den Gelen Veriler) ---
+# --- SADECE SAYFA1 VERİLERİYLE DATABASE BAŞLATMA ---
 def initialize_database():
-    if not os.path.exists(DB_FILE):
-        data_2025 = []
-        # Dosyandan aldığım depo listesi ve yıllık kira verileri (Kapaklı, Gebze, Tuzla vb.)
-        depo_maliyetleri = {
-            "Kapaklı Depo": [11826000, 11826000, 11826000, 11826000, 11826000, 11826000, 14782500, 14782500, 14782500, 14782500, 14782500, 14782500],
-            "Gebze Depo": [10072228, 10072228, 10072228, 10072228, 10072228, 10072228, 12590285, 12590285, 12590285, 12590285, 12590285, 12590285],
-            "Tuzla Depo": [3638250, 3638250, 3638250, 3638250, 3638250, 3638250, 4547813, 4547813, 4547813, 4547813, 4547813, 4547813],
-            "İzmir Torbalı Depo": [3353400, 3353400, 3353400, 3353400, 3353400, 3353400, 4191750, 4191750, 4191750, 4191750, 4191750, 4191750],
-            "İzmir Pancar Depo": [2296381, 2296381, 2296381, 2296381, 2296381, 2296381, 2870476, 2870476, 2870476, 2870476, 2870476, 2870476],
-            "Düzce Depo": [2697600, 2697600, 2697600, 2697600, 2697600, 2697600, 3372000, 3372000, 3372000, 3372000, 3372000, 3372000],
-            "Bilecik Depo": [3310998, 3310998, 3310998, 3310998, 3310998, 3310998, 4138748, 4138748, 4138748, 4138748, 4138748, 4138748],
-            "İzmir Pınarbaşı Depo": [737965, 737965, 737965, 737965, 737965, 737965, 922456, 922456, 922456, 922456, 922456, 922456]
-        }
-        
-        kapasite_fix = {
-            "Kapaklı Depo": (32000, 36.32), "Gebze Depo": (19301, 185.19), "Tuzla Depo": (15343, 10.00), 
-            "İzmir Torbalı Depo": (13824, 31.15), "İzmir Pancar Depo": (3365, 277.30), "Düzce Depo": (15343, 73.51), 
-            "Bilecik Depo": (22000, 55.12), "İzmir Pınarbaşı Depo": (4694, 48.03)
-        }
+    data_2025 = []
+    
+    # Sayfa1'deki gerçek veriler (Kira, Kapasite, Fix Cost hepsi buradan)
+    # Tem-Ara dönemindeki kira artışları dahil edildi.
+    sayfa1_data = {
+        "Gebze Depo": {"kiralar": [10072228]*6 + [12590285]*6, "kap": 19301, "fix": 185.19},
+        "İzmir Torbalı Depo": {"kiralar": [3353400]*6 + [4191750]*6, "kap": 13824, "fix": 31.15},
+        "İzmir Pancar Depo": {"kiralar": [2296381]*6 + [2870476]*6, "kap": 3365, "fix": 277.30},
+        "Düzce Depo": {"kiralar": [2697600]*6 + [3372000]*6, "kap": 15343, "fix": 73.51},
+        "Bilecik Depo": {"kiralar": [3310998]*6 + [4138748]*6, "kap": 22000, "fix": 55.12},
+        "Adana Depo": {"kiralar": [0]*12, "kap": 2133, "fix": 73.18},
+        "İzmir Pınarbaşı Depo": {"kiralar": [737965]*6 + [922456]*6, "kap": 4694, "fix": 48.03},
+        "Ankara Depo": {"kiralar": [0]*12, "kap": 4038, "fix": 68.30},
+        "Kapaklı Depo": {"kiralar": [11826000]*6 + [14782500]*6, "kap": 32000, "fix": 36.32},
+        "Tuzla Depo": {"kiralar": [3638250]*6 + [4547813]*6, "kap": 15343, "fix": 10.00}
+    }
 
-        for depo, kiralar in depo_maliyetleri.items():
-            kap, fix = kapasite_fix[depo]
-            for i, ay_adi in enumerate(AYLAR):
-                data_2025.append({
-                    "Yıl": 2025, "Ay": ay_adi, "Depo Adı": depo,
-                    "Kapasite (m3)": kap, "Kira Maliyeti (₺)": kiralar[i], "Fix Cost (m3 Başı)": fix
-                })
-        
-        df_init = pd.DataFrame(data_2025)
-        df_init.to_csv(DB_FILE, index=False)
+    for depo, vals in sayfa1_data.items():
+        for i, ay_adi in enumerate(AYLAR):
+            data_2025.append({
+                "Yıl": 2025, "Ay": ay_adi, "Depo Adı": depo,
+                "Kapasite (m3)": vals["kap"], 
+                "Kira Maliyeti (₺)": vals["kiralar"][i], 
+                "Fix Cost (m3 Başı)": vals["fix"]
+            })
+    
+    pd.DataFrame(data_2025).to_csv(DB_FILE, index=False)
 
-initialize_database()
+# İlk kurulum veya manuel güncelleme
+if not os.path.exists(DB_FILE) or st.sidebar.button("🔄 Veritabanını Sayfa1 ile Senkronize Et"):
+    initialize_database()
+    st.sidebar.success("Tüm veriler Sayfa1'den çekildi!")
 
 # --- FONKSİYONLAR ---
 def load_history():
@@ -102,19 +102,6 @@ if full_history:
             if st.button("🗑️ Sil", key=f"h_del_{idx}"):
                 full_history.pop(idx); save_history_all(full_history); st.rerun()
 else: st.sidebar.info("Arşiv boş.")
-
-st.sidebar.markdown("---")
-st.sidebar.header("📤 Veri Ekle")
-up_user = st.sidebar.text_input("Ad Soyad:", key="up_user")
-up_label = st.sidebar.text_input("Senaryo Adı:", key="up_label")
-uploaded_file = st.sidebar.file_uploader("Excel/CSV", type=["csv", "xlsx"])
-
-if uploaded_file and up_user and up_label:
-    if st.sidebar.button("✅ Kaydet"):
-        up_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-        up_df.to_csv(DB_FILE, index=False)
-        new_entry = {"tarih": datetime.now().strftime("%d.%m.%Y %H:%M"), "isim": up_label, "yukleyen": up_user, "veri": up_df.to_dict(orient="list")}
-        full_history.insert(0, new_entry); save_history_all(full_history); st.rerun()
 
 # --- ANA EKRAN ---
 st.title("🚀 Hepsiburada Stratejik Planlama Merkezi")
